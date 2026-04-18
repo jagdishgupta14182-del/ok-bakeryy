@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>OK Bakery Management</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:linear-gradient(135deg,#1a0a00,#3d1a00,#1a0a00);min-height:100vh;font-family:'Segoe UI',sans-serif;color:#fff;}
+input,select,textarea{background:rgba(255,255,255,0.08);border:1px solid rgba(255,140,0,0.4);border-radius:10px;padding:10px 12px;color:#fff;font-size:14px;width:100%;margin-bottom:8px;outline:none;font-family:'Segoe UI',sans-serif;}
+select{background:#2a1000;}
+select option{background:#2a1000;}
+input::placeholder,textarea::placeholder{color:#888;}
+button{cursor:pointer;font-family:'Segoe UI',sans-serif;}
+.toggle-btn{display:flex;background:rgba(255,255,255,0.08);border-radius:25px;padding:3px;margin-bottom:12px;width:fit-content;}
+.toggle-btn button{padding:6px 18px;border-radius:22px;border:none;font-size:13px;font-weight:700;transition:all 0.2s;}
+.toggle-btn button.active{background:linear-gradient(135deg,#ff8c00,#ff6000);color:#fff;}
+.toggle-btn button.inactive{background:transparent;color:#888;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+
+const SB="https://bqnkzthuahfjjhggiswd.supabase.co/rest/v1";
+const KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxbmt6dGh1YWhmampoZ2dpc3dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NzAyNTgsImV4cCI6MjA5MTU0NjI1OH0.80Bs9Bq3srliKDH0nPb_F_Fptfd9D_ci9RM8u5UDtmQ";
+const HD={"apikey":KEY,"Authorization":`Bearer ${KEY}`,"Content-Type":"application/json"};
+
+const dbGet=async(t,q="")=>{try{const r=await fetch(`${SB}/${t}?order=created_at.desc${q}`,{headers:HD});if(!r.ok)return[];return await r.json();}catch{return[];}};
+const dbPost=async(t,b)=>{try{const r=await fetch(`${SB}/${t}`,{method:"POST",headers:{...HD,"Prefer":"return=representation"},body:JSON.stringify(b)});const txt=await r.text();if(!r.ok)return null;try{return JSON.parse(txt);}catch{return true;}}catch{return null;}};
+const dbPatch=async(t,id,b)=>{try{const r=await fetch(`${SB}/${t}?id=eq.${id}`,{method:"PATCH",headers:HD,body:JSON.stringify(b)});return r.ok;}catch{return false;}};
+
+const fd=()=>new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"2-digit",year:"numeric"});
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;};
+const rupee=(n)=>`₹${parseFloat(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const genInvNo=()=>`INV-${Date.now().toString().slice(-6)}`;
+
+const DEF_RECIPES=[
+  {name:"Bread / Bun",name_hi:"ब्रेड / बन",icon:"🍞",base_qty:50,base_unit:"pcs",ingredients:[{name:"Maida",qty:2,unit:"kg"},{name:"Yeast",qty:0.05,unit:"kg"},{name:"Sugar",qty:0.1,unit:"kg"},{name:"Salt",qty:0.02,unit:"kg"},{name:"Oil",qty:0.1,unit:"L"},{name:"Water",qty:1,unit:"L"}]},
+  {name:"Cake / Pastry",name_hi:"केक / पेस्ट्री",icon:"🎂",base_qty:10,base_unit:"pcs",ingredients:[{name:"Maida",qty:0.5,unit:"kg"},{name:"Egg",qty:4,unit:"pcs"},{name:"Sugar",qty:0.3,unit:"kg"},{name:"Butter",qty:0.2,unit:"kg"},{name:"Baking Powder",qty:0.01,unit:"kg"},{name:"Milk",qty:0.2,unit:"L"}]},
+  {name:"Biscuit / Cookies",name_hi:"बिस्कुट / कुकीज़",icon:"🍪",base_qty:100,base_unit:"pcs",ingredients:[{name:"Maida",qty:1,unit:"kg"},{name:"Sugar",qty:0.4,unit:"kg"},{name:"Butter",qty:0.3,unit:"kg"},{name:"Baking Soda",qty:0.005,unit:"kg"},{name:"Vanilla Essence",qty:0.01,unit:"L"}]},
+  {name:"Namkeen / Snacks",name_hi:"नमकीन / स्नैक्स",icon:"🥜",base_qty:1,base_unit:"kg",ingredients:[{name:"Besan",qty:0.5,unit:"kg"},{name:"Maida",qty:0.3,unit:"kg"},{name:"Oil",qty:0.2,unit:"L"},{name:"Salt",qty:0.02,unit:"kg"},{name:"Spices",qty:0.01,unit:"kg"}]},
+];
+
+const S={
+  card:{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,140,0,0.2)",borderRadius:"16px",padding:"16px",marginBottom:"12px"},
+  btn:(c)=>({padding:"11px 16px",borderRadius:"10px",border:"none",background:c||"linear-gradient(135deg,#ff8c00,#ff6000)",color:"#fff",fontWeight:"700",fontSize:"14px",cursor:"pointer",width:"100%"}),
+  bsm:(c)=>({padding:"7px 12px",borderRadius:"8px",border:"none",background:c||"linear-gradient(135deg,#ff8c00,#ff6000)",color:"#fff",fontWeight:"700",fontSize:"12px",cursor:"pointer",whiteSpace:"nowrap"}),
+  bout:{padding:"7px 12px",borderRadius:"8px",border:"1px solid #ff8c00",background:"transparent",color:"#ff8c00",fontWeight:"600",fontSize:"13px",cursor:"pointer"},
+  lbl:{fontSize:"12px",color:"#ffb347",marginBottom:"3px",display:"block",fontWeight:"600"},
+  tab:(a)=>({padding:"8px 11px",borderRadius:"8px 8px 0 0",border:"none",background:a?"rgba(255,140,0,0.25)":"transparent",color:a?"#ff8c00":"#999",fontWeight:a?"700":"500",fontSize:"12px",cursor:"pointer",whiteSpace:"nowrap",borderBottom:a?"2px solid #ff8c00":"2px solid transparent"}),
+  bdg:(c)=>({display:"inline-block",padding:"2px 8px",borderRadius:"20px",fontSize:"11px",fontWeight:"700",background:c==="g"?"rgba(0,200,100,0.2)":c==="r"?"rgba(255,60,60,0.2)":c==="b"?"rgba(41,128,185,0.2)":c==="y"?"rgba(255,165,0,0.2)":"rgba(255,140,0,0.2)",color:c==="g"?"#00c864":c==="r"?"#ff4040":c==="b"?"#3498db":c==="y"?"#ffa500":"#ffb347"}),
+  stat:(c)=>({background:`rgba(${c},0.1)`,border:`1px solid rgba(${c},0.3)`,borderRadius:"12px",padding:"12px",flex:1,textAlign:"center",minWidth:"80px"}),
+};
+
+function App(){
+  const [screen,setScreen]=useState("login");
+  const [pin,setPin]=useState("");
+  const [pinErr,setPinErr]=useState("");
+  const [tab,setTab]=useState("dashboard");
+  const [msg,setMsg]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [subScreen,setSubScreen]=useState(null);
+  const [accTab,setAccTab]=useState("sal");
+
+  const [recipes,setRecipes]=useState([]);
+  const [prods,setProds]=useState([]);
+  const [sales,setSales]=useState([]);
+  const [purch,setPurch]=useState([]);
+  const [exps,setExps]=useState([]);
+  const [parties,setParties]=useState([]);
+  const [invoices,setInvoices]=useState([]);
+  const [stock,setStock]=useState([]);
+  const [items,setItems]=useState([]);
+  const [priceHistory,setPriceHistory]=useState([]);
+
+  // Invoice form - Vyapar style
+  const [invForm,setInvForm]=useState({
+    party_id:"",party_name:"",party_address:"",party_gst:"",
+    invoice_no:genInvNo(),date:today(),
+    items:[],discount:0,tax_rate:0,shipping:0,notes:"",
+    status:"unpaid",payment_type:"credit"
+  });
+  const [invItem,setInvItem]=useState({name:"",qty:"",rate:"",unit:"pcs",discount_pct:0});
+  const [showPriceHistory,setShowPriceHistory]=useState(false);
+  const [itemHistory,setItemHistory]=useState([]);
+
+  // Item master form
+  const [itemForm,setItemForm]=useState({name:"",unit:"pcs",default_rate:"",hsn_code:""});
+
+  // Party form
+  const [partyForm,setPartyForm]=useState({name:"",type:"customer",phone:"",address:"",gst_no:"",balance:0});
+
+  // Stock
+  const [stockForm,setStockForm]=useState({name:"",type:"raw",quantity:"",unit:"kg",min_qty:"",rate:""});
+  const [stockAdj,setStockAdj]=useState({id:"",qty:"",type:"in",note:""});
+
+  // Production
+  const [pf,setPf]=useState({rid:"",qty:"",note:""});
+  const [cIngs,setCIngs]=useState([]);
+
+  // Sale/Purchase/Expense quick forms
+  const [sf,setSf]=useState({item:"",items:[],sItem:{name:"",qty:"",rate:"",unit:"pcs"},qty:"",rate:"",customer:"",customer_id:"",shipping:0,payment_type:"cash"});
+  const [pf2sel,setPf2sel]=useState({vendor_id:"",vendor_name:""});
+  const [pf2,setPf2]=useState({item:"",items:[],pItem:{name:"",qty:"",rate:"",unit:"kg"},qty:"",unit:"kg",rate:"",vendor:"",shipping:0,payment_type:"cash"});
+  const [ef,setEf]=useState({desc:"",amount:"",category:"Rent"});
+
+  // Party statement
+  const [stmtParty,setStmtParty]=useState(null);
+
+  const toast=(m,e=false)=>{setMsg({m,e});setTimeout(()=>setMsg(null),3500);};
+  const doSave=async(fn)=>{setBusy(true);try{await fn();}catch(e){toast("❌ Error: "+e.message,true);}setBusy(false);};
+
+  const load=async()=>{
+    const [r,p,s,pu,ex,pa,inv,st,it,ph]=await Promise.all([
+      dbGet("recipes"),dbGet("productions"),dbGet("sales"),dbGet("purchases"),
+      dbGet("expenses"),dbGet("parties"),dbGet("invoices"),dbGet("stock"),
+      dbGet("items"),dbGet("sale_price_history")
+    ]);
+    if(r.length===0){for(const rec of DEF_RECIPES)await dbPost("recipes",rec);setRecipes(await dbGet("recipes"));}
+    else setRecipes(r);
+    setProds(p);setSales(s);setPurch(pu);setExps(ex);setParties(pa);
+    setInvoices(inv);setStock(st);setItems(it);setPriceHistory(ph);
+  };
+
+  const login=async()=>{
+    if(pin==="1234"){setScreen("staff");setPin("");setPinErr("");await load();}
+    else if(pin==="9999"){setScreen("master");setTab("dashboard");setPin("");setPinErr("");await load();}
+    else{setPinErr("❌ गलत PIN!");setPin("");}
+  };
+  const logout=()=>{setScreen("login");setPin("");setPinErr("");setSubScreen(null);};
+
+  useEffect(()=>{
+    if(!pf.rid||!pf.qty){setCIngs([]);return;}
+    const r=recipes.find(x=>x.id===parseInt(pf.rid));
+    if(!r)return;
+    const m=parseFloat(pf.qty)/r.base_qty;
+    setCIngs((r.ingredients||[]).map(i=>({...i,cq:(i.qty*m).toFixed(3).replace(/\.?0+$/,"")})));
+  },[pf.rid,pf.qty,recipes]);
+
+  // When party selected in invoice, auto-fill
+  const selectPartyForInv=(partyId)=>{
+    const p=parties.find(x=>x.id===parseInt(partyId));
+    setInvForm(f=>({...f,party_id:partyId,party_name:p?p.name:"",party_address:p?p.address||"":"",party_gst:p?p.gst_no||"":""}));
+  };
+
+  // When item selected in invoice row
+  const selectItemForRow=(itemName)=>{
+    const it=items.find(x=>x.name===itemName);
+    // Get last price for this customer
+    const lastPrice=priceHistory.filter(h=>h.item_name===itemName&&h.party_name===invForm.party_name).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+    const rate=lastPrice?lastPrice.rate:(it?it.default_rate:"");
+    // Get last 5 prices for this item+customer
+    const hist=priceHistory.filter(h=>h.item_name===itemName&&(invForm.party_name?h.party_name===invForm.party_name:true)).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,5);
+    setItemHistory(hist);
+    setInvItem(f=>({...f,name:itemName,unit:it?it.unit:"pcs",rate:rate?String(rate):""}));
+    if(hist.length>0)setShowPriceHistory(true);
+  };
+
+  // Invoice calculations
+  const calcInv=(itms,disc,tax,ship)=>{
+    const sub=itms.reduce((s,i)=>{
+      const amt=parseFloat(i.qty||0)*parseFloat(i.rate||0);
+      const discAmt=amt*(parseFloat(i.discount_pct||0)/100);
+      return s+(amt-discAmt);
+    },0);
+    const afterDisc=sub-parseFloat(disc||0);
+    const taxAmt=afterDisc*(parseFloat(tax||0)/100);
+    const total=afterDisc+taxAmt+parseFloat(ship||0);
+    return{sub,taxAmt,total};
+  };
+
+  const addInvItem=()=>{
+    if(!invItem.name||!invItem.qty||!invItem.rate)return toast("Item, Qty और Rate जरूरी!",true);
+    const amt=parseFloat(invItem.qty)*parseFloat(invItem.rate);
+    const discAmt=amt*(parseFloat(invItem.discount_pct||0)/100);
+    setInvForm(f=>({...f,items:[...f.items,{...invItem,amount:amt-discAmt}]}));
+    setInvItem({name:"",qty:"",rate:"",unit:"pcs",discount_pct:0});
+    setShowPriceHistory(false);
+    setItemHistory([]);
+  };
+
+  const saveInvoice=()=>doSave(async()=>{
+    if(!invForm.party_name)return toast("Party name जरूरी है!",true);
+    if(invForm.items.length===0)return toast("कम से कम 1 item जोड़ें!",true);
+    const{sub,taxAmt,total}=calcInv(invForm.items,invForm.discount,invForm.tax_rate,invForm.shipping);
+    const payload={
+      invoice_no:invForm.invoice_no,
+      date:invForm.date,
+      party_id:invForm.party_id?parseInt(invForm.party_id):null,
+      party_name:invForm.party_name,
+      party_address:invForm.party_address||"",
+      party_gst:invForm.party_gst||"",
+      items:invForm.items,
+      subtotal:sub,
+      discount:parseFloat(invForm.discount||0),
+      tax_rate:parseFloat(invForm.tax_rate||0),
+      tax_amount:taxAmt,
+      shipping:parseFloat(invForm.shipping||0),
+      total,
+      notes:invForm.notes||"",
+      status:invForm.payment_type==="cash"?"paid":"unpaid",
+      payment_type:invForm.payment_type
+    };
+    const result=await dbPost("invoices",payload);
+    if(result){
+      // Save price history for each item
+      for(const item of invForm.items){
+        await dbPost("sale_price_history",{
+          party_id:invForm.party_id?parseInt(invForm.party_id):null,
+          party_name:invForm.party_name,
+          item_name:item.name,
+          rate:parseFloat(item.rate),
+          date:invForm.date
+        });
+      }
+      // Update party balance if credit
+      if(invForm.party_id&&invForm.payment_type==="credit"){
+        const party=parties.find(p=>p.id===parseInt(invForm.party_id));
+        if(party)await dbPatch("parties",invForm.party_id,{balance:(parseFloat(party.balance||0)+total)});
+      }
+      setInvForm({party_id:"",party_name:"",party_address:"",party_gst:"",invoice_no:genInvNo(),date:today(),items:[],discount:0,tax_rate:0,shipping:0,notes:"",status:"unpaid",payment_type:"credit"});
+      setSubScreen(null);await load();toast("✅ Invoice बन गई!");
+    }else toast("❌ Save नहीं हुआ!",true);
+  });
+
+  const markPaid=async(inv)=>{
+    await dbPatch("invoices",inv.id,{status:"paid"});
+    if(inv.party_id){
+      const party=parties.find(p=>p.id===inv.party_id);
+      if(party)await dbPatch("parties",inv.party_id,{balance:Math.max(0,parseFloat(party.balance||0)-parseFloat(inv.total||0))});
+    }
+    await load();toast("✅ Paid!");
+  };
+
+  const saveItem=()=>doSave(async()=>{
+    if(!itemForm.name)return toast("Item name जरूरी!",true);
+    const ok=await dbPost("items",itemForm);
+    if(ok){setItemForm({name:"",unit:"pcs",default_rate:"",hsn_code:""});await load();toast("✅ Item जुड़ गया!");}
+    else toast("❌ Save नहीं हुआ!",true);
+  });
+
+  const saveParty=()=>doSave(async()=>{
+    if(!partyForm.name)return toast("नाम जरूरी है!",true);
+    let ok;
+    if(partyForm.id){
+      ok=await dbPatch("parties",partyForm.id,{name:partyForm.name,type:partyForm.type,phone:partyForm.phone,address:partyForm.address,gst_no:partyForm.gst_no,balance:parseFloat(partyForm.balance||0)});
+    } else {
+      ok=await dbPost("parties",{name:partyForm.name,type:partyForm.type,phone:partyForm.phone||"",address:partyForm.address||"",gst_no:partyForm.gst_no||"",balance:parseFloat(partyForm.balance||0)});
+    }
+    if(ok){setPartyForm({name:"",type:"customer",phone:"",address:"",gst_no:"",balance:0});setSubScreen(null);await load();toast(partyForm.id?"✅ Party update हो गई!":"✅ Party जुड़ गई!");}
+    else toast("❌ Save नहीं हुआ!",true);
+  });
+
+  const getFullStatement=(party)=>{
+    const partyInv=invoices.filter(i=>i.party_id===party.id||i.party_name===party.name);
+    const partySales=sales.filter(s=>s.customer===party.name);
+    const partyPurch=purch.filter(p=>p.vendor===party.name);
+    const allTxns=[
+      ...partyInv.map(i=>({
+        id:"inv"+i.id,date:i.date,type:"Invoice",desc:i.invoice_no,
+        amount:parseFloat(i.total||0),payment:i.payment_type,status:i.status,
+        items:i.items||[],shipping:i.shipping||0,discount:i.discount||0,
+        tax_rate:i.tax_rate||0,tax_amount:i.tax_amount||0,
+        cr:i.status==="unpaid"?parseFloat(i.total||0):0,
+        dr:i.status==="paid"?parseFloat(i.total||0):0,
+        rawObj:i
+      })),
+      ...partySales.map(s=>({
+        id:"sal"+s.id,date:s.date,type:"Sale",desc:s.item,
+        amount:parseFloat(s.total||0),payment:s.payment_type,status:s.payment_type,
+        items:s.items||[{name:s.item,qty:"-",rate:"-",unit:""}],
+        shipping:s.shipping||0,
+        cr:s.payment_type==="credit"?parseFloat(s.total||0):0,
+        dr:s.payment_type==="cash"?parseFloat(s.total||0):0,
+        rawObj:s
+      })),
+      ...partyPurch.map(p=>({
+        id:"pur"+p.id,date:p.date,type:"Purchase",desc:p.item,
+        amount:parseFloat(p.total||0),payment:p.payment_type,status:p.payment_type,
+        items:p.items||[{name:p.item,qty:"-",rate:"-",unit:""}],
+        shipping:p.shipping||0,
+        cr:0,dr:parseFloat(p.total||0),
+        rawObj:p
+      })),
+    ].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    return allTxns;
+  };
+
+  const shareOnWhatsApp=(party,allTxns,balance)=>{
+    const unpaidTxns=allTxns.filter(t=>t.cr>0);
+    let msg=`🥐 *OK BAKERY*
+`;
+    msg+=`📋 *${party.name} का Statement*
+`;
+    msg+=`━━━━━━━━━━━━━━━━
+
+`;
+    unpaidTxns.forEach(t=>{
+      msg+=`📅 ${t.date} | ${t.type}
+`;
+      if(t.items&&t.items.length>0){
+        t.items.forEach(it=>{
+          if(it.name)msg+=`  • ${it.name}: ${it.qty} × ₹${it.rate} = ₹${(parseFloat(it.qty||0)*parseFloat(it.rate||0)).toFixed(0)}
+`;
+        });
+      }
+      msg+=`  💰 Total: ₹${t.amount.toFixed(2)}
+
+`;
+    });
+    msg+=`━━━━━━━━━━━━━━━━
+`;
+    msg+=`⏳ *बकाया: ₹${parseFloat(balance).toFixed(2)}*
+`;
+    msg+=`
+कृपया जल्द भुगतान करें 🙏`;
+    const url=`https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url,"_blank");
+  };
+
+  const saveStock=()=>doSave(async()=>{
+    if(!stockForm.name||!stockForm.quantity)return toast("नाम और Qty जरूरी!",true);
+    const ok=await dbPost("stock",stockForm);
+    if(ok){setStockForm({name:"",type:"raw",quantity:"",unit:"kg",min_qty:"",rate:""});setSubScreen(null);await load();toast("✅ Stock जुड़ गया!");}
+    else toast("❌ Save नहीं हुआ!",true);
+  });
+
+  const adjustStock=()=>doSave(async()=>{
+    if(!stockAdj.id||!stockAdj.qty)return toast("Item और Qty जरूरी!",true);
+    const item=stock.find(s=>s.id===parseInt(stockAdj.id));
+    if(!item)return;
+    const newQty=stockAdj.type==="in"?parseFloat(item.quantity||0)+parseFloat(stockAdj.qty):parseFloat(item.quantity||0)-parseFloat(stockAdj.qty);
+    await dbPatch("stock",stockAdj.id,{quantity:Math.max(0,newQty)});
+    await dbPost("stock_transactions",{stock_id:parseInt(stockAdj.id),name:item.name,type:stockAdj.type,quantity:parseFloat(stockAdj.qty),reference:stockAdj.note,date:fd()});
+    setStockAdj({id:"",qty:"",type:"in",note:""});await load();toast("✅ Stock update!");
+  });
+
+  const addProd=()=>doSave(async()=>{
+    if(!pf.rid||!pf.qty)return toast("Product और Quantity भरें!",true);
+    const r=recipes.find(x=>x.id===parseInt(pf.rid));
+    const ok=await dbPost("productions",{date:fd(),time:new Date().toLocaleTimeString("hi-IN",{hour:"2-digit",minute:"2-digit"}),product:r.name,product_hi:r.name_hi,icon:r.icon,qty:pf.qty,unit:r.base_unit,ings:cIngs,note:pf.note});
+    if(ok){setPf({rid:"",qty:"",note:""});await load();toast("✅ Production दर्ज!");}
+    else toast("❌ Save नहीं हुआ!",true);
+  });
+
+  const addSale=()=>doSave(async()=>{
+    const saleItems=(sf.items||[]).filter(it=>it.name&&it.qty&&it.rate);
+    if(saleItems.length===0)return toast("कम से कम 1 item भरें (नाम, qty, rate)!",true);
+    if(!sf.customer)return toast("Customer नाम जरूरी है!",true);
+    const itemsTotal=saleItems.reduce((s,it)=>s+(parseFloat(it.qty)*parseFloat(it.rate)),0);
+    const total=itemsTotal+parseFloat(sf.shipping||0);
+    const payload={
+      date:fd(),
+      item:saleItems.map(i=>i.name).join(", "),
+      items:saleItems,
+      customer:sf.customer,
+      shipping:parseFloat(sf.shipping||0),
+      total:total,
+      payment_type:sf.payment_type
+    };
+    console.log("Saving sale:", payload);
+    const ok=await dbPost("sales",payload);
+    console.log("Sale result:", ok);
+    if(ok){
+      if(sf.payment_type==="credit"&&sf.customer_id){
+        const p=parties.find(x=>x.id===parseInt(sf.customer_id));
+        if(p)await dbPatch("parties",sf.customer_id,{balance:parseFloat(p.balance||0)+total});
+      }
+      setSf({item:"",items:[],qty:"",rate:"",customer:"",customer_id:"",shipping:0,payment_type:"cash"});
+      await load();
+      toast("✅ Sale save!");
+    } else {
+      toast("❌ Save नहीं हुआ! Internet check करें",true);
+    }
+  });
+
+  const addPurch=()=>doSave(async()=>{
+    const purchItems=(pf2.items||[]).filter(it=>it.name&&it.qty&&it.rate);
+    if(purchItems.length===0)return toast("कम से कम 1 item भरें (नाम, qty, rate)!",true);
+    const itemsTotal=purchItems.reduce((s,it)=>s+(parseFloat(it.qty)*parseFloat(it.rate)),0);
+    const total=itemsTotal+parseFloat(pf2.shipping||0);
+    const payload={
+      date:fd(),
+      item:purchItems.map(i=>i.name).join(", "),
+      items:purchItems,
+      vendor:pf2.vendor||"",
+      shipping:parseFloat(pf2.shipping||0),
+      total:total,
+      payment_type:pf2.payment_type
+    };
+    console.log("Saving purchase:", payload);
+    const ok=await dbPost("purchases",payload);
+    console.log("Purchase result:", ok);
+    if(ok){
+      if(pf2.payment_type==="credit"&&pf2sel.vendor_id){
+        const p=parties.find(x=>x.id===parseInt(pf2sel.vendor_id));
+        if(p)await dbPatch("parties",pf2sel.vendor_id,{balance:parseFloat(p.balance||0)+total});
+      }
+      setPf2({item:"",items:[],qty:"",unit:"kg",rate:"",vendor:"",shipping:0,payment_type:"cash"});
+      setPf2sel({vendor_id:"",vendor_name:""});
+      await load();
+      toast("✅ Purchase save!");
+    } else {
+      toast("❌ Save नहीं हुआ! Internet check करें",true);
+    }
+  });
+
+  const addExp=()=>doSave(async()=>{
+    if(!ef.desc||!ef.amount)return toast("सब field भरें!",true);
+    const ok=await dbPost("expenses",{date:fd(),desc_text:ef.desc,amount:ef.amount,category:ef.category});
+    if(ok){setEf({desc:"",amount:"",category:"Rent"});await load();toast("✅ Expense save!");}
+    else toast("❌ Save नहीं हुआ!",true);
+  });
+
+  const printInvoice=(inv)=>{
+    const{sub,taxAmt,total}=calcInv(inv.items||[],inv.discount,inv.tax_rate,inv.shipping);
+    const w=window.open("","_blank");
+    w.document.write(`<html><head><title>Invoice ${inv.invoice_no}</title>
+    <style>body{font-family:Arial,sans-serif;padding:20px;color:#000;max-width:800px;margin:0 auto;}
+    .hdr{display:flex;justify-content:space-between;border-bottom:3px solid #ff8c00;padding-bottom:12px;margin-bottom:15px;}
+    .co{font-size:22px;font-weight:900;color:#ff8c00;}
+    table{width:100%;border-collapse:collapse;margin:15px 0;}
+    th,td{border:1px solid #ddd;padding:8px;font-size:12px;}
+    th{background:#ff8c00;color:#fff;}
+    .tr{text-align:right;}.tw{font-weight:700;background:#fff3e0;}
+    .badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${inv.status==="paid"?"#d4edda":"#f8d7da"};color:${inv.status==="paid"?"#155724":"#721c24"};}
+    .footer{margin-top:20px;text-align:center;color:#888;font-size:11px;border-top:1px solid #ddd;padding-top:10px;}
+    </style></head><body>
+    <div class="hdr">
+      <div><div class="co">🥐 OK BAKERY</div><div style="font-size:12px;color:#666">Ambikapur, Surguja, CG</div></div>
+      <div style="text-align:right">
+        <div style="font-size:18px;font-weight:700">TAX INVOICE</div>
+        <div><b>${inv.invoice_no}</b></div>
+        <div style="font-size:12px">Date: ${inv.date}</div>
+        <span class="badge">${inv.status==="paid"?"✅ PAID":"⏳ UNPAID"}</span>
+        <span style="margin-left:5px;padding:3px 8px;border-radius:10px;font-size:11px;background:${inv.payment_type==="cash"?"#d4edda":"#fff3cd"};color:${inv.payment_type==="cash"?"#155724":"#856404"}">${inv.payment_type==="cash"?"💵 CASH":"🤝 CREDIT"}</span>
+      </div>
+    </div>
+    <div style="margin-bottom:15px;padding:10px;background:#f9f9f9;border-radius:8px;">
+      <b>Bill To:</b><br/>
+      <b style="font-size:15px">${inv.party_name}</b><br/>
+      ${inv.party_address?`<span style="color:#666">${inv.party_address}</span><br/>`:""}
+      ${inv.party_gst?`<span style="color:#666">GST: ${inv.party_gst}</span>`:""}
+    </div>
+    <table>
+      <tr><th>#</th><th>Item</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Disc%</th><th>Amount</th></tr>
+      ${(inv.items||[]).map((item,i)=>{
+        const amt=parseFloat(item.qty)*parseFloat(item.rate);
+        const disc=amt*(parseFloat(item.discount_pct||0)/100);
+        return `<tr><td>${i+1}</td><td>${item.name}</td><td>${item.qty}</td><td>${item.unit}</td><td>₹${item.rate}</td><td>${item.discount_pct||0}%</td><td>₹${(amt-disc).toFixed(2)}</td></tr>`;
+      }).join("")}
+      <tr><td colspan="6" class="tr"><b>Subtotal</b></td><td>₹${sub.toFixed(2)}</td></tr>
+      ${parseFloat(inv.discount||0)>0?`<tr><td colspan="6" class="tr">Discount</td><td style="color:red">-₹${parseFloat(inv.discount).toFixed(2)}</td></tr>`:""}
+      ${parseFloat(inv.tax_rate||0)>0?`<tr><td colspan="6" class="tr">GST (${inv.tax_rate}%)</td><td>₹${taxAmt.toFixed(2)}</td></tr>`:""}
+      ${parseFloat(inv.shipping||0)>0?`<tr><td colspan="6" class="tr">🚚 Shipping</td><td>₹${parseFloat(inv.shipping).toFixed(2)}</td></tr>`:""}
+      <tr class="tw"><td colspan="6" style="text-align:right">TOTAL</td><td>₹${total.toFixed(2)}</td></tr>
+    </table>
+    ${inv.notes?`<p><b>Notes:</b> ${inv.notes}</p>`:""}
+    <div class="footer">Thank you! | OK Bakery, Ambikapur</div>
+    </body></html>`);
+    w.document.close();w.print();
+  };
+
+  // Party Statement
+  const getPartyStatement=(party)=>{
+    const partyInv=invoices.filter(i=>i.party_id===party.id||i.party_name===party.name);
+    return partyInv;
+  };
+
+  const totS=sales.reduce((s,x)=>s+parseFloat(x.total||0),0);
+  const totP=purch.reduce((s,x)=>s+parseFloat(x.total||0),0);
+  const totE=exps.reduce((s,x)=>s+parseFloat(x.amount||0),0);
+  const totInv=invoices.reduce((s,x)=>s+parseFloat(x.total||0),0);
+  const totUnpaid=invoices.filter(i=>i.status==="unpaid").reduce((s,x)=>s+parseFloat(x.total||0),0);
+  const net=(totS+totInv)-totP-totE;
+  const lowStock=stock.filter(s=>parseFloat(s.quantity||0)<=parseFloat(s.min_qty||0)&&parseFloat(s.min_qty||0)>0);
+  const todayP=prods.filter(p=>p.date===fd());
+  const todaySTotal=sales.filter(s=>s.date===fd()).reduce((s,x)=>s+parseFloat(x.total||0),0);
+  const{sub:iSub,taxAmt:iTax,total:iTotal}=calcInv(invForm.items,invForm.discount,invForm.tax_rate,invForm.shipping);
+
+  const Msg=()=>msg?<div style={{position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",background:msg.e?"#c0392b":"#27ae60",color:"#fff",padding:"10px 20px",borderRadius:"12px",fontWeight:"700",zIndex:9999,whiteSpace:"nowrap",maxWidth:"92vw",textAlign:"center"}}>{msg.m}</div>:null;
+  
+  const Hdr=({sub})=><div style={{background:"rgba(255,140,0,0.15)",borderBottom:"1px solid rgba(255,140,0,0.3)",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
+    <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+      <span style={{fontSize:"26px"}}>🥐</span>
+      <div><div style={{fontSize:"18px",fontWeight:"900",color:"#ff8c00"}}>OK BAKERY</div><div style={{fontSize:"10px",color:"#ffb347",letterSpacing:"2px"}}>{sub}</div></div>
+    </div>
+    <button style={S.bout} onClick={logout}>Logout</button>
+  </div>;
+
+  const CashCreditToggle=({value,onChange})=><div className="toggle-btn">
+    <button className={value==="cash"?"active":"inactive"} onClick={()=>onChange("cash")}>💵 Cash</button>
+    <button className={value==="credit"?"active":"inactive"} onClick={()=>onChange("credit")}>🤝 Credit</button>
+  </div>;
+
+  // LOGIN
+  if(screen==="login")return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:"20px"}}>
+      <Msg/>
+      <div style={{textAlign:"center",marginBottom:"28px"}}>
+        <div style={{fontSize:"64px"}}>🥐</div>
+        <div style={{fontSize:"30px",fontWeight:"900",color:"#ff8c00"}}>OK BAKERY</div>
+        <div style={{fontSize:"11px",color:"#ffb347",letterSpacing:"3px"}}>MANAGEMENT SYSTEM</div>
+      </div>
+      <div style={{...S.card,width:"100%",maxWidth:"320px"}}>
+        <div style={{textAlign:"center",marginBottom:"14px",color:"#ffb347"}}>🔐 PIN डालें</div>
+        <input style={{fontSize:"26px",textAlign:"center",letterSpacing:"10px"}} type="password" placeholder="••••" maxLength={4} value={pin} onChange={e=>{setPin(e.target.value);setPinErr("");}} onKeyDown={e=>e.key==="Enter"&&login()}/>
+        {pinErr&&<div style={{color:"#ff6060",fontSize:"13px",textAlign:"center",marginBottom:"8px"}}>{pinErr}</div>}
+        <button style={S.btn()} onClick={login}>Login →</button>
+        <div style={{marginTop:"14px",fontSize:"12px",color:"#666",textAlign:"center"}}>Staff: <b style={{color:"#ffb347"}}>1234</b> | Master: <b style={{color:"#ff8c00"}}>9999</b></div>
+      </div>
+    </div>
+  );
+
+  // STAFF
+  if(screen==="staff"){
+    const sRec=pf.rid?recipes.find(r=>r.id===parseInt(pf.rid)):null;
+    return(
+      <div style={{minHeight:"100vh",paddingBottom:"30px"}}><Msg/><Hdr sub="STAFF APP"/>
+        <div style={{padding:"14px"}}>
+          <div style={{...S.card,background:"rgba(255,140,0,0.1)",padding:"12px 16px"}}>
+            <div style={{fontSize:"12px",color:"#ffb347"}}>📅 आज</div>
+            <div style={{fontSize:"17px",fontWeight:"800",color:"#ff8c00"}}>{fd()}</div>
+          </div>
+          <div style={S.card}>
+            <div style={{fontSize:"15px",fontWeight:"800",color:"#ff8c00",marginBottom:"14px"}}>➕ Production दर्ज करें</div>
+            <label style={S.lbl}>Product चुनें *</label>
+            <select value={pf.rid} onChange={e=>setPf(f=>({...f,rid:e.target.value,qty:""}))}>
+              <option value="">-- Product चुनें --</option>
+              {recipes.map(r=><option key={r.id} value={r.id}>{r.icon} {r.name} / {r.name_hi}</option>)}
+            </select>
+            {sRec&&<>
+              <label style={S.lbl}>कितना बनाया? ({sRec.base_unit}) *</label>
+              <input type="number" placeholder={`जैसे: ${sRec.base_qty}`} value={pf.qty} onChange={e=>setPf(f=>({...f,qty:e.target.value}))}/>
+              {cIngs.length>0&&pf.qty&&<div style={{marginBottom:"12px"}}>
+                <div style={{fontSize:"13px",fontWeight:"700",color:"#ffb347",marginBottom:"8px"}}>🧂 Raw Material — {pf.qty} {sRec.base_unit} के लिए:</div>
+                <div style={{background:"rgba(255,140,0,0.08)",borderRadius:"12px",padding:"10px",border:"1px solid rgba(255,140,0,0.2)"}}>
+                  {cIngs.map((ing,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i<cIngs.length-1?"1px solid rgba(255,255,255,0.05)":"none"}}><span style={{color:"#ccc",fontSize:"13px"}}>🧂 {ing.name}</span><span style={{color:"#ff8c00",fontWeight:"800"}}>{ing.cq} {ing.unit}</span></div>)}
+                </div>
+              </div>}
+            </>}
+            <label style={S.lbl}>Note</label>
+            <input placeholder="optional..." value={pf.note} onChange={e=>setPf(f=>({...f,note:e.target.value}))}/>
+            <button style={S.btn()} onClick={addProd} disabled={busy}>{busy?"⏳ Saving...":"✅ Submit"}</button>
+          </div>
+          <div style={S.card}>
+            <div style={{fontSize:"14px",fontWeight:"800",color:"#ff8c00",marginBottom:"10px"}}>📊 आज — {todayP.length} entries</div>
+            {todayP.length===0?<div style={{textAlign:"center",color:"#666",padding:"20px"}}>कोई entry नहीं</div>
+              :todayP.map(p=><div key={p.id} style={{background:"rgba(255,140,0,0.06)",borderRadius:"12px",padding:"12px",marginBottom:"8px"}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}>
+                  <div style={{fontWeight:"700"}}>{p.icon} {p.product}</div>
+                  <div style={{textAlign:"right"}}><div style={{fontSize:"20px",fontWeight:"900",color:"#ff8c00"}}>{p.qty} <span style={{fontSize:"12px"}}>{p.unit}</span></div><div style={{fontSize:"11px",color:"#888"}}>{p.time}</div></div>
+                </div>
+                {p.ings&&p.ings.length>0&&<div style={{marginTop:"8px",display:"flex",flexWrap:"wrap",gap:"4px"}}>{p.ings.map((g,i)=><span key={i} style={S.bdg("o")}>🧂 {g.name}: {g.cq} {g.unit}</span>)}</div>}
+              </div>)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // MASTER
+  if(screen==="master"){
+
+    // PARTY STATEMENT SCREEN
+    if(subScreen==="statement"&&stmtParty){
+      const allTxns=getFullStatement(stmtParty);
+      const totalDebit=allTxns.reduce((s,t)=>s+t.dr,0);
+      const totalCredit=allTxns.reduce((s,t)=>s+t.cr,0);
+      const balance=totalCredit-totalDebit;
+      const partyInvs=invoices.filter(i=>i.party_id===stmtParty.id||i.party_name===stmtParty.name);
+      return(
+        <div style={{minHeight:"100vh",paddingBottom:"30px"}}><Msg/><Hdr sub="STATEMENT"/>
+          <div style={{padding:"14px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <button style={S.bsm("rgba(255,255,255,0.1)")} onClick={()=>{setSubScreen(null);setStmtParty(null);}}>← वापस</button>
+                <div style={{fontWeight:"800",color:"#ff8c00",fontSize:"14px"}}>📋 {stmtParty.name}</div>
+              </div>
+              <button style={S.bsm("linear-gradient(135deg,#8e44ad,#6c3483)")} onClick={()=>{setPartyForm({...stmtParty});setSubScreen("newParty");}}>✏️ Edit</button>
+            </div>
+
+            {/* Party Info Card */}
+            <div style={{...S.card,background:"rgba(255,140,0,0.08)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div>
+                  <div style={{fontWeight:"800",fontSize:"16px"}}>{stmtParty.name}</div>
+                  <span style={S.bdg(stmtParty.type==="customer"?"b":"o")}>{stmtParty.type==="customer"?"Customer":"Vendor"}</span>
+                  {stmtParty.phone&&<div style={{fontSize:"12px",color:"#888",marginTop:"4px"}}>📞 {stmtParty.phone}</div>}
+                  {stmtParty.address&&<div style={{fontSize:"12px",color:"#888"}}>📍 {stmtParty.address}</div>}
+                  {stmtParty.gst_no&&<div style={{fontSize:"12px",color:"#888"}}>GST: {stmtParty.gst_no}</div>}
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:"11px",color:"#888"}}>Outstanding</div>
+                  <div style={{fontSize:"22px",fontWeight:"900",color:parseFloat(stmtParty.balance||0)>0?"#ff4040":"#00c864"}}>{rupee(stmtParty.balance||0)}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div style={{display:"flex",gap:"7px",marginBottom:"12px"}}>
+              <div style={S.stat("0,200,100")}><div style={{fontSize:"10px",color:"#00c864"}}>💰 Total</div><div style={{fontSize:"14px",fontWeight:"800",color:"#00c864"}}>{rupee(totalDebit)}</div></div>
+              <div style={S.stat("41,128,185")}><div style={{fontSize:"10px",color:"#3498db"}}>✅ Received</div><div style={{fontSize:"14px",fontWeight:"800",color:"#3498db"}}>{rupee(totalDebit-totalCredit>0?totalDebit-totalCredit:0)}</div></div>
+              <div style={S.stat("255,60,60")}><div style={{fontSize:"10px",color:"#ff4040"}}>⏳ Balance</div><div style={{fontSize:"14px",fontWeight:"800",color:"#ff4040"}}>{rupee(stmtParty.balance||0)}</div></div>
+            </div>
+
+            {/* WhatsApp Share Button */}
+            {parseFloat(stmtParty.balance||0)>0&&<button style={{...S.btn("linear-gradient(135deg,#25d366,#128c7e)"),marginBottom:"12px",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px"}} onClick={()=>shareOnWhatsApp(stmtParty,allTxns,stmtParty.balance)}>
+              <span style={{fontSize:"18px"}}>📱</span> WhatsApp पर बकाया भेजें
+            </button>}
+
+            {/* All Transactions */}
+            <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"8px",fontSize:"13px"}}>📜 सभी Transactions ({allTxns.length})</div>
+            {allTxns.length===0?<div style={{...S.card,textAlign:"center",color:"#666",padding:"30px"}}>कोई transaction नहीं</div>
+              :allTxns.map(t=><div key={t.id} style={{...S.card,borderLeft:`3px solid ${t.type==="Invoice"?"#3498db":t.type==="Sale"?"#00c864":"#ff8c00"}`}}>
+                {/* Header */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"8px"}}>
+                  <div>
+                    <div style={{display:"flex",gap:"4px",alignItems:"center",marginBottom:"4px"}}>
+                      <span style={S.bdg(t.type==="Invoice"?"b":t.type==="Sale"?"g":"o")}>{t.type==="Invoice"?"🧾":t.type==="Sale"?"💰":"🛒"} {t.type}</span>
+                      <span style={S.bdg(t.payment==="cash"?"g":"y")}>{t.payment==="cash"?"💵 Cash":"🤝 Credit"}</span>
+                      {t.type==="Invoice"&&<span style={S.bdg(t.status==="paid"?"g":"r")}>{t.status==="paid"?"✅ Paid":"⏳ Unpaid"}</span>}
+                    </div>
+                    <div style={{fontSize:"12px",color:"#888"}}>📅 {t.date} {t.desc&&t.type==="Invoice"?`| ${t.desc}`:""}</div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:"20px",fontWeight:"900",color:t.type==="Sale"||t.type==="Invoice"?"#ff8c00":"#3498db"}}>{rupee(t.amount)}</div>
+                    {t.cr>0&&<div style={{fontSize:"11px",color:"#ff4040",fontWeight:"700"}}>बकाया ⏳</div>}
+                    {t.dr>0&&t.type!=="Purchase"&&<div style={{fontSize:"11px",color:"#00c864",fontWeight:"700"}}>Paid ✅</div>}
+                  </div>
+                </div>
+
+                {/* Item Details Table */}
+                {t.items&&t.items.length>0&&t.items[0].name&&<div style={{background:"rgba(255,255,255,0.04)",borderRadius:"8px",padding:"8px",marginBottom:"6px"}}>
+                  <div style={{fontSize:"11px",color:"#888",marginBottom:"5px",fontWeight:"700"}}>📦 Items:</div>
+                  <table style={{width:"100%",fontSize:"12px",borderCollapse:"collapse"}}>
+                    <thead>
+                      <tr style={{color:"#ffb347"}}>
+                        <td style={{padding:"3px 4px",fontWeight:"700"}}>Item</td>
+                        <td style={{padding:"3px 4px",textAlign:"center",fontWeight:"700"}}>Qty</td>
+                        <td style={{padding:"3px 4px",textAlign:"center",fontWeight:"700"}}>Rate</td>
+                        <td style={{padding:"3px 4px",textAlign:"right",fontWeight:"700"}}>Amount</td>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {t.items.map((it,i)=>it.name?<tr key={i} style={{borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+                        <td style={{padding:"4px",color:"#fff"}}>{it.name}</td>
+                        <td style={{padding:"4px",textAlign:"center",color:"#ccc"}}>{it.qty} {it.unit||""}</td>
+                        <td style={{padding:"4px",textAlign:"center",color:"#ccc"}}>₹{it.rate}</td>
+                        <td style={{padding:"4px",textAlign:"right",color:"#ff8c00",fontWeight:"700"}}>₹{(parseFloat(it.qty||0)*parseFloat(it.rate||0)).toFixed(2)}</td>
+                      </tr>:null)}
+                    </tbody>
+                  </table>
+                  {parseFloat(t.shipping||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:"12px",color:"#888",paddingTop:"4px",borderTop:"1px solid rgba(255,255,255,0.05)",marginTop:"4px"}}><span>🚚 Shipping</span><span>₹{parseFloat(t.shipping).toFixed(2)}</span></div>}
+                </div>}
+
+                {/* Action Buttons */}
+                <div style={{display:"flex",gap:"6px",justifyContent:"flex-end"}}>
+                  {t.type==="Invoice"&&<button style={{...S.bsm("linear-gradient(135deg,#2980b9,#1a5276)"),fontSize:"11px"}} onClick={()=>{const inv=partyInvs.find(i=>i.id===t.rawObj?.id);if(inv)printInvoice(inv);}}>🖨️ Print</button>}
+                  {t.type==="Invoice"&&t.status==="unpaid"&&<button style={{...S.bsm("linear-gradient(135deg,#27ae60,#1e8449)"),fontSize:"11px"}} onClick={()=>{const inv=partyInvs.find(i=>i.id===t.rawObj?.id);if(inv)markPaid(inv);}}>✅ Paid</button>}
+                  {t.cr>0&&<button style={{...S.bsm("linear-gradient(135deg,#25d366,#128c7e)"),fontSize:"11px"}} onClick={()=>{
+                    let msg=`🥐 *OK BAKERY*
+📅 ${t.date}
+
+`;
+                    if(t.items)t.items.forEach(it=>{if(it.name)msg+=`• ${it.name}: ${it.qty} × ₹${it.rate}
+`;});
+                    msg+=`
+💰 *Total: ₹${t.amount.toFixed(2)}*
+⏳ *बकाया: ₹${t.amount.toFixed(2)}*
+कृपया भुगतान करें 🙏`;
+                    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
+                  }}>📱 WhatsApp</button>}
+                </div>
+              </div>)}
+          </div>
+        </div>
+      );
+    }
+
+    // NEW INVOICE - Vyapar Style
+    if(subScreen==="newInvoice")return(
+      <div style={{minHeight:"100vh",paddingBottom:"30px"}}><Msg/><Hdr sub="NEW INVOICE"/>
+        <div style={{padding:"14px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px"}}>
+            <button style={S.bsm("rgba(255,255,255,0.1)")} onClick={()=>setSubScreen(null)}>← वापस</button>
+            <div style={{fontWeight:"800",color:"#ff8c00",fontSize:"15px"}}>🧾 Invoice</div>
+            <div style={{fontSize:"12px",color:"#888"}}>#{invForm.invoice_no}</div>
+          </div>
+
+          {/* Cash/Credit Toggle - Vyapar style */}
+          <div style={S.card}>
+            <CashCreditToggle value={invForm.payment_type} onChange={v=>setInvForm(f=>({...f,payment_type:v}))}/>
+            
+            {/* Party */}
+            <label style={S.lbl}>👤 Customer *</label>
+            <select value={invForm.party_id} onChange={e=>selectPartyForInv(e.target.value)}>
+              <option value="">-- Customer चुनें --</option>
+              {parties.filter(p=>p.type==="customer").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <input placeholder="या यहाँ नाम लिखें *" value={invForm.party_name} onChange={e=>setInvForm(f=>({...f,party_name:e.target.value}))}/>
+            <div style={{display:"flex",gap:"8px"}}>
+              <div style={{flex:2}}><label style={S.lbl}>Address</label><input placeholder="Address" value={invForm.party_address} onChange={e=>setInvForm(f=>({...f,party_address:e.target.value}))}/></div>
+              <div style={{flex:1}}><label style={S.lbl}>GST No.</label><input placeholder="GST" value={invForm.party_gst} onChange={e=>setInvForm(f=>({...f,party_gst:e.target.value}))}/></div>
+            </div>
+            <div style={{display:"flex",gap:"8px"}}>
+              <div style={{flex:1}}><label style={S.lbl}>Invoice No.</label><input value={invForm.invoice_no} onChange={e=>setInvForm(f=>({...f,invoice_no:e.target.value}))}/></div>
+              <div style={{flex:1}}><label style={S.lbl}>Date</label><input type="date" value={invForm.date} onChange={e=>setInvForm(f=>({...f,date:e.target.value}))}/></div>
+            </div>
+          </div>
+
+          {/* Items */}
+          <div style={S.card}>
+            <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"10px"}}>📦 Items ({invForm.items.length})</div>
+            {invForm.items.map((item,i)=><div key={i} style={{background:"rgba(255,140,0,0.06)",borderRadius:"10px",padding:"10px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontWeight:"700"}}>{item.name}</div>
+                <div style={{fontSize:"12px",color:"#888"}}>{item.qty} {item.unit} × ₹{item.rate}{parseFloat(item.discount_pct||0)>0?` (-${item.discount_pct}%)`:""}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                <b style={{color:"#ff8c00"}}>{rupee(item.amount)}</b>
+                <button onClick={()=>setInvForm(f=>({...f,items:f.items.filter((_,idx)=>idx!==i)}))} style={{background:"none",border:"none",color:"#ff4040",fontSize:"20px",cursor:"pointer"}}>×</button>
+              </div>
+            </div>)}
+
+            {/* Add Item Row */}
+            <div style={{background:"rgba(255,140,0,0.07)",borderRadius:"12px",padding:"12px"}}>
+              <div style={{fontSize:"12px",color:"#888",marginBottom:"8px"}}>+ Item जोड़ें</div>
+              
+              {/* Item select with saved items */}
+              <label style={S.lbl}>Item नाम *</label>
+              <select value={invItem.name} onChange={e=>selectItemForRow(e.target.value)} style={{marginBottom:"4px"}}>
+                <option value="">-- Saved Items --</option>
+                {items.map(it=><option key={it.id} value={it.name}>{it.name}</option>)}
+              </select>
+              <input placeholder="या नाम लिखें" value={invItem.name} onChange={e=>setInvItem(f=>({...f,name:e.target.value}))} style={{marginBottom:"8px"}}/>
+
+              {/* Price History Popup */}
+              {showPriceHistory&&itemHistory.length>0&&<div style={{background:"rgba(41,128,185,0.15)",border:"1px solid rgba(41,128,185,0.4)",borderRadius:"10px",padding:"10px",marginBottom:"8px"}}>
+                <div style={{fontSize:"12px",color:"#3498db",fontWeight:"700",marginBottom:"6px"}}>📊 Last 5 Sale Prices ({invItem.name})</div>
+                <table style={{width:"100%",fontSize:"12px"}}>
+                  <thead><tr style={{color:"#888"}}><td>Date</td><td>Party</td><td>Rate</td></tr></thead>
+                  <tbody>
+                    {itemHistory.map((h,i)=><tr key={i} style={{color:"#ccc"}}>
+                      <td>{h.date}</td>
+                      <td>{h.party_name}</td>
+                      <td><button style={{...S.bsm("rgba(41,128,185,0.3)"),fontSize:"11px",padding:"2px 6px"}} onClick={()=>setInvItem(f=>({...f,rate:String(h.rate)}))}>{rupee(h.rate)} ✓</button></td>
+                    </tr>)}
+                  </tbody>
+                </table>
+                <button style={{...S.bsm("rgba(255,255,255,0.1)"),marginTop:"6px",fontSize:"11px"}} onClick={()=>setShowPriceHistory(false)}>Close</button>
+              </div>}
+
+              <div style={{display:"flex",gap:"6px"}}>
+                <div style={{flex:1}}><label style={S.lbl}>Qty *</label><input type="number" placeholder="Qty" value={invItem.qty} onChange={e=>setInvItem(f=>({...f,qty:e.target.value}))}/></div>
+                <div style={{flex:1}}><label style={S.lbl}>Unit</label><select value={invItem.unit} onChange={e=>setInvItem(f=>({...f,unit:e.target.value}))}><option>pcs</option><option>kg</option><option>g</option><option>dozen</option><option>box</option></select></div>
+              </div>
+              <div style={{display:"flex",gap:"6px"}}>
+                <div style={{flex:1}}><label style={S.lbl}>Rate ₹ *</label><input type="number" placeholder="Rate" value={invItem.rate} onChange={e=>setInvItem(f=>({...f,rate:e.target.value}))}/></div>
+                <div style={{flex:1}}><label style={S.lbl}>Discount %</label><input type="number" placeholder="0" value={invItem.discount_pct} onChange={e=>setInvItem(f=>({...f,discount_pct:e.target.value}))}/></div>
+              </div>
+              {invItem.qty&&invItem.rate&&<div style={{background:"rgba(255,140,0,0.1)",borderRadius:"8px",padding:"8px",marginBottom:"8px",fontSize:"13px",display:"flex",justifyContent:"space-between"}}>
+                <span style={{color:"#ccc"}}>Amount:</span>
+                <b style={{color:"#ff8c00"}}>{rupee((parseFloat(invItem.qty||0)*parseFloat(invItem.rate||0))*(1-parseFloat(invItem.discount_pct||0)/100))}</b>
+              </div>}
+              <button style={S.btn()} onClick={addInvItem}>+ Item Add करें</button>
+            </div>
+          </div>
+
+          {/* Charges */}
+          <div style={S.card}>
+            <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"10px"}}>💰 Charges</div>
+            <div style={{display:"flex",gap:"8px"}}>
+              <div style={{flex:1}}><label style={S.lbl}>Discount ₹</label><input type="number" placeholder="0" value={invForm.discount} onChange={e=>setInvForm(f=>({...f,discount:e.target.value}))}/></div>
+              <div style={{flex:1}}><label style={S.lbl}>GST %</label><input type="number" placeholder="0" value={invForm.tax_rate} onChange={e=>setInvForm(f=>({...f,tax_rate:e.target.value}))}/></div>
+              <div style={{flex:1}}><label style={S.lbl}>🚚 Shipping</label><input type="number" placeholder="0" value={invForm.shipping} onChange={e=>setInvForm(f=>({...f,shipping:e.target.value}))}/></div>
+            </div>
+            <div style={{background:"rgba(255,140,0,0.08)",borderRadius:"10px",padding:"12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px"}}><span style={{color:"#ccc"}}>Subtotal</span><span>₹{iSub.toFixed(2)}</span></div>
+              {parseFloat(invForm.discount||0)>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px"}}><span style={{color:"#ccc"}}>Discount</span><span style={{color:"#ff4040"}}>-₹{parseFloat(invForm.discount).toFixed(2)}</span></div>}
+              {parseFloat(invForm.tax_rate||0)>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px"}}><span style={{color:"#ccc"}}>GST</span><span>₹{iTax.toFixed(2)}</span></div>}
+              {parseFloat(invForm.shipping||0)>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px"}}><span style={{color:"#ccc"}}>🚚 Shipping</span><span>₹{parseFloat(invForm.shipping).toFixed(2)}</span></div>}
+              <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid rgba(255,255,255,0.15)",paddingTop:"8px",marginTop:"4px"}}><b style={{fontSize:"16px"}}>TOTAL</b><b style={{fontSize:"24px",color:"#ff8c00"}}>₹{iTotal.toFixed(2)}</b></div>
+            </div>
+            <label style={S.lbl} style={{marginTop:"8px"}}>Notes</label>
+            <input placeholder="optional..." value={invForm.notes} onChange={e=>setInvForm(f=>({...f,notes:e.target.value}))}/>
+          </div>
+
+          <button style={S.btn("linear-gradient(135deg,#27ae60,#1e8449)")} onClick={saveInvoice} disabled={busy}>{busy?"⏳ Saving...":"🧾 Invoice Save करें"}</button>
+        </div>
+      </div>
+    );
+
+    // NEW PARTY
+    if(subScreen==="newParty")return(
+      <div style={{minHeight:"100vh",paddingBottom:"30px"}}><Msg/><Hdr sub="NEW PARTY"/>
+        <div style={{padding:"14px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"14px"}}>
+            <button style={S.bsm("rgba(255,255,255,0.1)")} onClick={()=>setSubScreen(null)}>← वापस</button>
+            <div style={{fontWeight:"800",color:"#ff8c00"}}>👥 नई Party</div>
+          </div>
+          <div style={S.card}>
+            <label style={S.lbl}>Type</label>
+            <select value={partyForm.type} onChange={e=>setPartyForm(f=>({...f,type:e.target.value}))}>
+              <option value="customer">Customer</option><option value="vendor">Vendor</option>
+            </select>
+            <label style={S.lbl}>Name *</label><input value={partyForm.name} onChange={e=>setPartyForm(f=>({...f,name:e.target.value}))}/>
+            <label style={S.lbl}>Phone</label><input value={partyForm.phone} onChange={e=>setPartyForm(f=>({...f,phone:e.target.value}))}/>
+            <label style={S.lbl}>Address</label><input value={partyForm.address} onChange={e=>setPartyForm(f=>({...f,address:e.target.value}))}/>
+            <label style={S.lbl}>GST No.</label><input value={partyForm.gst_no} onChange={e=>setPartyForm(f=>({...f,gst_no:e.target.value}))}/>
+            <label style={S.lbl}>Opening Balance ₹</label><input type="number" placeholder="0" value={partyForm.balance} onChange={e=>setPartyForm(f=>({...f,balance:e.target.value}))}/>
+            <button style={S.btn()} onClick={saveParty} disabled={busy}>{busy?"⏳ Saving...":"✅ Save"}</button>
+          </div>
+        </div>
+      </div>
+    );
+
+    // ITEM MASTER
+    if(subScreen==="itemMaster")return(
+      <div style={{minHeight:"100vh",paddingBottom:"30px"}}><Msg/><Hdr sub="ITEM MASTER"/>
+        <div style={{padding:"14px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"14px"}}>
+            <button style={S.bsm("rgba(255,255,255,0.1)")} onClick={()=>setSubScreen(null)}>← वापस</button>
+            <div style={{fontWeight:"800",color:"#ff8c00"}}>📦 Item Master</div>
+          </div>
+          <div style={S.card}>
+            <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"10px"}}>➕ नया Item जोड़ें</div>
+            <label style={S.lbl}>Item Name *</label><input placeholder="जैसे: 1 Pound Cake" value={itemForm.name} onChange={e=>setItemForm(f=>({...f,name:e.target.value}))}/>
+            <div style={{display:"flex",gap:"8px"}}>
+              <div style={{flex:1}}><label style={S.lbl}>Unit</label><select value={itemForm.unit} onChange={e=>setItemForm(f=>({...f,unit:e.target.value}))}><option>pcs</option><option>kg</option><option>g</option><option>dozen</option><option>box</option></select></div>
+              <div style={{flex:1}}><label style={S.lbl}>Default Rate ₹</label><input type="number" placeholder="0" value={itemForm.default_rate} onChange={e=>setItemForm(f=>({...f,default_rate:e.target.value}))}/></div>
+              <div style={{flex:1}}><label style={S.lbl}>HSN Code</label><input placeholder="optional" value={itemForm.hsn_code} onChange={e=>setItemForm(f=>({...f,hsn_code:e.target.value}))}/></div>
+            </div>
+            <button style={S.btn()} onClick={saveItem} disabled={busy}>{busy?"⏳ Saving...":"✅ Item Save"}</button>
+          </div>
+          <div style={S.card}>
+            <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"10px"}}>📋 Saved Items ({items.length})</div>
+            {items.length===0?<div style={{color:"#666",textAlign:"center",padding:"20px"}}>कोई item नहीं</div>
+              :items.map(it=><div key={it.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                <div><div style={{fontWeight:"600"}}>{it.name}</div><span style={{fontSize:"12px",color:"#888"}}>{it.unit}</span>{it.hsn_code&&<span style={{fontSize:"11px",color:"#666",marginLeft:"6px"}}>HSN: {it.hsn_code}</span>}</div>
+                <div style={{color:"#ff8c00",fontWeight:"700"}}>{it.default_rate?rupee(it.default_rate):"-"}</div>
+              </div>)}
+          </div>
+        </div>
+      </div>
+    );
+
+    // STOCK SCREEN
+    if(subScreen==="newStock")return(
+      <div style={{minHeight:"100vh",paddingBottom:"30px"}}><Msg/><Hdr sub="STOCK"/>
+        <div style={{padding:"14px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"14px"}}>
+            <button style={S.bsm("rgba(255,255,255,0.1)")} onClick={()=>setSubScreen(null)}>← वापस</button>
+            <div style={{fontWeight:"800",color:"#ff8c00"}}>📦 Stock</div>
+          </div>
+          <div style={S.card}>
+            <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"10px"}}>🔄 Stock Adjust</div>
+            <select value={stockAdj.id} onChange={e=>setStockAdj(f=>({...f,id:e.target.value}))}>
+              <option value="">-- Item चुनें --</option>
+              {stock.map(s=><option key={s.id} value={s.id}>{s.name} ({s.quantity} {s.unit})</option>)}
+            </select>
+            <select value={stockAdj.type} onChange={e=>setStockAdj(f=>({...f,type:e.target.value}))}>
+              <option value="in">✅ Stock In</option><option value="out">❌ Stock Out</option>
+            </select>
+            <input type="number" placeholder="Qty" value={stockAdj.qty} onChange={e=>setStockAdj(f=>({...f,qty:e.target.value}))}/>
+            <input placeholder="Note" value={stockAdj.note} onChange={e=>setStockAdj(f=>({...f,note:e.target.value}))}/>
+            <button style={S.btn()} onClick={adjustStock} disabled={busy}>{busy?"⏳...":"✅ Update"}</button>
+          </div>
+          <div style={S.card}>
+            <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"10px"}}>➕ नया Stock Item</div>
+            <select value={stockForm.type} onChange={e=>setStockForm(f=>({...f,type:e.target.value}))}>
+              <option value="raw">Raw Material</option><option value="product">Ready Product</option>
+            </select>
+            <input placeholder="Name *" value={stockForm.name} onChange={e=>setStockForm(f=>({...f,name:e.target.value}))}/>
+            <div style={{display:"flex",gap:"8px"}}>
+              <input style={{flex:1}} type="number" placeholder="Opening Qty *" value={stockForm.quantity} onChange={e=>setStockForm(f=>({...f,quantity:e.target.value}))}/>
+              <select style={{flex:1}} value={stockForm.unit} onChange={e=>setStockForm(f=>({...f,unit:e.target.value}))}><option>kg</option><option>g</option><option>L</option><option>pcs</option><option>bag</option></select>
+              <input style={{flex:1}} type="number" placeholder="Min Qty" value={stockForm.min_qty} onChange={e=>setStockForm(f=>({...f,min_qty:e.target.value}))}/>
+            </div>
+            <button style={S.btn()} onClick={saveStock} disabled={busy}>{busy?"⏳...":"✅ Add"}</button>
+          </div>
+        </div>
+      </div>
+    );
+
+    // MAIN TABS
+    return(
+      <div style={{minHeight:"100vh",paddingBottom:"30px"}}><Msg/><Hdr sub="MASTER APP"/>
+
+        {lowStock.length>0&&<div style={{background:"rgba(255,60,60,0.15)",borderBottom:"2px solid #ff4040",padding:"10px 16px",display:"flex",gap:"8px"}}>
+          <span style={{fontSize:"18px"}}>🔴</span>
+          <div><div style={{fontWeight:"700",color:"#ff4040",fontSize:"13px"}}>Low Stock!</div><div style={{fontSize:"12px",color:"#ffb347"}}>{lowStock.map(s=>s.name).join(", ")}</div></div>
+        </div>}
+
+        <div style={{padding:"14px 14px 0",display:"flex",gap:"7px",overflowX:"auto"}}>
+          <div style={S.stat("0,200,100")}><div style={{fontSize:"10px",color:"#00c864"}}>💰 Sales</div><div style={{fontSize:"13px",fontWeight:"800",color:"#00c864"}}>₹{(totS+totInv).toLocaleString()}</div></div>
+          <div style={S.stat("255,140,0")}><div style={{fontSize:"10px",color:"#ff8c00"}}>🛒 Purch</div><div style={{fontSize:"13px",fontWeight:"800",color:"#ff8c00"}}>₹{totP.toLocaleString()}</div></div>
+          <div style={S.stat("255,60,60")}><div style={{fontSize:"10px",color:"#ff4040"}}>💸 Exp</div><div style={{fontSize:"13px",fontWeight:"800",color:"#ff4040"}}>₹{totE.toLocaleString()}</div></div>
+          <div style={S.stat("255,165,0")}><div style={{fontSize:"10px",color:"#ffa500"}}>⏳ Due</div><div style={{fontSize:"13px",fontWeight:"800",color:"#ffa500"}}>₹{totUnpaid.toLocaleString()}</div></div>
+          <div style={S.stat(net>=0?"0,200,100":"255,60,60")}><div style={{fontSize:"10px",color:net>=0?"#00c864":"#ff4040"}}>📈 Profit</div><div style={{fontSize:"13px",fontWeight:"800",color:net>=0?"#00c864":"#ff4040"}}>₹{net.toLocaleString()}</div></div>
+        </div>
+
+        <div style={{display:"flex",gap:"4px",overflowX:"auto",padding:"12px 14px 0",borderBottom:"1px solid rgba(255,140,0,0.2)"}}>
+          {[["dashboard","🏠"],["invoice","🧾"],["party","👥"],["items","📦 Items"],["stock","📊 Stock"],["production","🏭"],["accounts","💰"],["reports","📋"]].map(([k,l])=><button key={k} style={S.tab(tab===k)} onClick={()=>setTab(k)}>{l}</button>)}
+        </div>
+
+        <div style={{padding:"14px"}}>
+
+          {tab==="dashboard"&&<div>
+            <div style={{fontWeight:"800",color:"#ff8c00",fontSize:"16px",marginBottom:"12px"}}>🏠 Dashboard</div>
+            <div style={{display:"flex",gap:"8px",marginBottom:"12px"}}>
+              <div style={{...S.card,flex:1,background:"rgba(0,200,100,0.08)",textAlign:"center",padding:"12px"}}>
+                <div style={{fontSize:"11px",color:"#888"}}>आज Sales</div>
+                <div style={{fontSize:"20px",fontWeight:"900",color:"#00c864"}}>₹{todaySTotal.toLocaleString()}</div>
+              </div>
+              <div style={{...S.card,flex:1,background:"rgba(255,140,0,0.08)",textAlign:"center",padding:"12px"}}>
+                <div style={{fontSize:"11px",color:"#888"}}>Production</div>
+                <div style={{fontSize:"20px",fontWeight:"900",color:"#ff8c00"}}>{todayP.length}</div>
+              </div>
+            </div>
+            {lowStock.length>0&&<div style={S.card}>
+              <div style={{fontWeight:"700",color:"#ff4040",marginBottom:"8px"}}>🔴 Low Stock</div>
+              {lowStock.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}><span>{s.name}</span><span style={{color:"#ff4040",fontWeight:"700"}}>{s.quantity} {s.unit}</span></div>)}
+            </div>}
+            <div style={S.card}>
+              <div style={{fontWeight:"700",color:"#ff8c00",marginBottom:"8px"}}>⏳ Unpaid Invoices</div>
+              {invoices.filter(i=>i.status==="unpaid").length===0?<div style={{color:"#666",fontSize:"13px"}}>सब paid ✅</div>
+                :invoices.filter(i=>i.status==="unpaid").slice(0,5).map(inv=><div key={inv.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                  <div><div style={{fontWeight:"600",fontSize:"13px"}}>{inv.party_name}</div><div style={{fontSize:"11px",color:"#888"}}>{inv.invoice_no} • {inv.date}</div></div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{color:"#ff8c00",fontWeight:"700"}}>{rupee(inv.total)}</div>
+                    <button style={{...S.bsm("linear-gradient(135deg,#27ae60,#1e8449)"),fontSize:"10px",padding:"3px 8px",marginTop:"2px"}} onClick={()=>markPaid(inv)}>✅ Paid</button>
+                  </div>
+                </div>)}
+            </div>
+          </div>}
+
+          {tab==="invoice"&&<div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+              <div style={{fontWeight:"800",color:"#ff8c00",fontSize:"15px"}}>🧾 Invoices ({invoices.length})</div>
+              <button style={S.bsm()} onClick={()=>setSubScreen("newInvoice")}>+ नई Invoice</button>
+            </div>
+            {invoices.length===0?<div style={{...S.card,textAlign:"center",color:"#666",padding:"30px"}}>कोई Invoice नहीं</div>
+              :invoices.map(inv=><div key={inv.id} style={S.card}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div>
+                    <div style={{fontWeight:"700"}}>{inv.party_name}</div>
+                    <div style={{fontSize:"12px",color:"#888",marginBottom:"4px"}}>{inv.invoice_no} • {inv.date}</div>
+                    <div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>
+                      <span style={S.bdg(inv.status==="paid"?"g":"r")}>{inv.status==="paid"?"✅ Paid":"⏳ Unpaid"}</span>
+                      <span style={S.bdg(inv.payment_type==="cash"?"g":"y")}>{inv.payment_type==="cash"?"💵 Cash":"🤝 Credit"}</span>
+                      {parseFloat(inv.shipping||0)>0&&<span style={S.bdg("b")}>🚚 ₹{inv.shipping}</span>}
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:"20px",fontWeight:"900",color:"#ff8c00"}}>{rupee(inv.total)}</div>
+                    <div style={{display:"flex",gap:"4px",marginTop:"4px",justifyContent:"flex-end"}}>
+                      <button style={S.bsm("linear-gradient(135deg,#2980b9,#1a5276)")} onClick={()=>printInvoice(inv)}>🖨️</button>
+                      {inv.status==="unpaid"&&<button style={S.bsm("linear-gradient(135deg,#27ae60,#1e8449)")} onClick={()=>markPaid(inv)}>✅ Paid</button>}
+                    </div>
+                  </div>
+                </div>
+              </div>)}
+          </div>}
+
+          {tab==="party"&&<div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+              <div style={{fontWeight:"800",color:"#ff8c00",fontSize:"15px"}}>👥 Parties ({parties.length})</div>
+              <button style={S.bsm()} onClick={()=>setSubScreen("newParty")}>+ नई Party</button>
+            </div>
+            {parties.length===0?<div style={{...S.card,textAlign:"center",color:"#666",padding:"30px"}}>कोई Party नहीं</div>
+              :parties.map(p=><div key={p.id} style={S.card}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontWeight:"700"}}>{p.name}</div>
+                    <div style={{display:"flex",gap:"4px",marginTop:"4px",alignItems:"center"}}>
+                      <span style={S.bdg(p.type==="customer"?"b":"o")}>{p.type==="customer"?"Customer":"Vendor"}</span>
+                      {p.phone&&<span style={{fontSize:"12px",color:"#888"}}>📞 {p.phone}</span>}
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    {parseFloat(p.balance||0)>0?<div style={{fontSize:"16px",fontWeight:"800",color:"#ff4040"}}>{rupee(p.balance)}</div>:<div style={{color:"#00c864",fontWeight:"700"}}>✅ Clear</div>}
+                    <div style={{display:"flex",gap:"4px",marginTop:"4px",justifyContent:"flex-end"}}>
+                      <button style={{...S.bsm("linear-gradient(135deg,#2980b9,#1a5276)"),fontSize:"11px"}} onClick={()=>{setStmtParty(p);setSubScreen("statement");}}>📋 Statement</button>
+                      <button style={{...S.bsm("linear-gradient(135deg,#8e44ad,#6c3483)"),fontSize:"11px"}} onClick={()=>{setPartyForm({...p});setSubScreen("newParty");}}>✏️ Edit</button>
+                    </div>
+                  </div>
+                </div>
+              </div>)}
+          </div>}
+
+          {tab==="items"&&<div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+              <div style={{fontWeight:"800",color:"#ff8c00",fontSize:"15px"}}>📦 Item Master ({items.length})</div>
+              <button style={S.bsm()} onClick={()=>setSubScreen("itemMaster")}>+ नया Item</button>
+            </div>
+            {items.length===0?<div style={{...S.card,textAlign:"center",color:"#666",padding:"30px"}}>कोई Item नहीं<br/><span style={{fontSize:"12px"}}>Invoice बनाते समय items automatically save होंगे</span></div>
+              :items.map(it=><div key={it.id} style={S.card}>
+                <div style={{display:"flex",justifyContent:"space-between"}}>
+                  <div><div style={{fontWeight:"700"}}>{it.name}</div><span style={S.bdg("o")}>{it.unit}</span>{it.hsn_code&&<span style={{fontSize:"11px",color:"#888",marginLeft:"6px"}}>HSN: {it.hsn_code}</span>}</div>
+                  <div style={{color:"#ff8c00",fontWeight:"700"}}>{it.default_rate?rupee(it.default_rate):"-"}</div>
+                </div>
+              </div>)}
+          </div>}
+
+          {tab==="stock"&&<div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+              <div style={{fontWeight:"800",color:"#ff8c00",fontSize:"15px"}}>📊 Stock</div>
+              <button style={S.bsm()} onClick={()=>setSubScreen("newStock")}>+ Add/Adjust</button>
+            </div>
+            <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"8px",fontSize:"13px"}}>🌾 Raw Material</div>
+            {stock.filter(s=>s.type==="raw").length===0&&<div style={{...S.card,color:"#666",textAlign:"center",padding:"15px",fontSize:"13px"}}>कोई item नहीं</div>}
+            {stock.filter(s=>s.type==="raw").map(s=><div key={s.id} style={{...S.card,border:parseFloat(s.quantity||0)<=parseFloat(s.min_qty||0)&&parseFloat(s.min_qty||0)>0?"1px solid #ff4040":"1px solid rgba(255,140,0,0.2)"}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <div><div style={{fontWeight:"700"}}>{s.name}</div>{s.rate&&<div style={{fontSize:"12px",color:"#888"}}>₹{s.rate}/{s.unit}</div>}</div>
+                <div style={{textAlign:"right"}}><div style={{fontSize:"22px",fontWeight:"900",color:parseFloat(s.quantity||0)<=parseFloat(s.min_qty||0)&&parseFloat(s.min_qty||0)>0?"#ff4040":"#ff8c00"}}>{s.quantity} <span style={{fontSize:"13px"}}>{s.unit}</span></div>{parseFloat(s.quantity||0)<=parseFloat(s.min_qty||0)&&parseFloat(s.min_qty||0)>0&&<span style={S.bdg("r")}>🔴 Low</span>}</div>
+              </div>
+            </div>)}
+            <div style={{fontWeight:"700",color:"#ffb347",margin:"12px 0 8px",fontSize:"13px"}}>🥐 Ready Products</div>
+            {stock.filter(s=>s.type==="product").length===0&&<div style={{...S.card,color:"#666",textAlign:"center",padding:"15px",fontSize:"13px"}}>कोई item नहीं</div>}
+            {stock.filter(s=>s.type==="product").map(s=><div key={s.id} style={S.card}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><div style={{fontWeight:"700"}}>{s.name}</div><div style={{fontSize:"22px",fontWeight:"900",color:"#00c864"}}>{s.quantity} <span style={{fontSize:"13px"}}>{s.unit}</span></div></div>
+            </div>)}
+          </div>}
+
+          {tab==="production"&&<div>
+            <div style={{...S.card,background:"rgba(255,140,0,0.08)"}}><div style={{fontWeight:"700",color:"#ff8c00"}}>📅 {fd()} — {todayP.length} entries</div></div>
+            {prods.length===0?<div style={{...S.card,textAlign:"center",color:"#666",padding:"30px"}}>कोई Production नहीं</div>
+              :prods.map(p=><div key={p.id} style={S.card}>
+                <div style={{display:"flex",justifyContent:"space-between"}}><div><span style={{fontSize:"18px"}}>{p.icon}</span><b style={{marginLeft:"8px"}}>{p.product}</b></div><div style={{textAlign:"right"}}><div style={{fontSize:"18px",fontWeight:"900",color:"#ff8c00"}}>{p.qty} {p.unit}</div><div style={{fontSize:"11px",color:"#888"}}>{p.date} {p.time}</div></div></div>
+                {p.ings&&p.ings.length>0&&<div style={{marginTop:"8px",display:"flex",flexWrap:"wrap",gap:"4px"}}>{p.ings.map((g,i)=><span key={i} style={S.bdg("o")}>🧂 {g.name}: {g.cq} {g.unit}</span>)}</div>}
+              </div>)}
+          </div>}
+
+          {tab==="accounts"&&<div>
+            <div style={{display:"flex",gap:"4px",marginBottom:"12px",overflowX:"auto"}}>
+              {[["sal","💰 Sale"],["pur","🛒 Purchase"],["exp","💸 Expense"]].map(([k,l])=><button key={k} style={S.tab(accTab===k)} onClick={()=>setAccTab(k)}>{l}</button>)}
+            </div>
+
+            {accTab==="sal"&&<div>
+              <div style={S.card}>
+                <div style={{fontWeight:"800",color:"#00c864",marginBottom:"10px"}}>➕ Sale दर्ज करें</div>
+                <CashCreditToggle value={sf.payment_type} onChange={v=>setSf(f=>({...f,payment_type:v}))}/>
+
+                {/* Customer */}
+                <label style={S.lbl}>👤 Customer *</label>
+                <div style={{display:"flex",gap:"6px",marginBottom:"4px"}}>
+                  <select style={{flex:1,marginBottom:0}} onChange={e=>{
+                    const p=parties.find(x=>x.id===parseInt(e.target.value));
+                    if(p)setSf(f=>({...f,customer:p.name,customer_id:String(p.id)}));
+                    else setSf(f=>({...f,customer:"",customer_id:""}));
+                  }}>
+                    <option value="">-- Party चुनें --</option>
+                    {parties.filter(p=>p.type==="customer").map(p=><option key={p.id} value={p.id}>{p.name}{parseFloat(p.balance||0)>0?` (बकाया: ₹${parseFloat(p.balance).toLocaleString()})`:""}</option>)}
+                  </select>
+                  <button style={{...S.bsm("linear-gradient(135deg,#2980b9,#1a5276)"),whiteSpace:"nowrap"}} onClick={()=>setSubScreen("newParty")}>+ New</button>
+                </div>
+                <input placeholder="या नाम लिखें *" value={sf.customer} onChange={e=>setSf(f=>({...f,customer:e.target.value,customer_id:""}))} style={{marginBottom:"6px"}}/>
+                {sf.customer_id&&<div style={{background:"rgba(255,60,60,0.1)",border:"1px solid rgba(255,60,60,0.3)",borderRadius:"8px",padding:"8px",marginBottom:"8px",fontSize:"13px",display:"flex",justifyContent:"space-between"}}>
+                  <span style={{color:"#ffb347"}}>👤 {sf.customer}</span>
+                  <span style={{color:"#ff4040",fontWeight:"700"}}>बकाया: {rupee(parties.find(p=>p.id===parseInt(sf.customer_id))?.balance||0)}</span>
+                </div>}
+
+                {/* Items Table - Vyapar Style */}
+                <div style={{overflowX:"auto",marginBottom:"8px"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:"13px"}}>
+                    <thead>
+                      <tr style={{background:"rgba(255,140,0,0.2)"}}>
+                        <th style={{padding:"8px 6px",textAlign:"left",color:"#ffb347",fontWeight:"700",minWidth:"120px"}}>#  Item</th>
+                        <th style={{padding:"8px 6px",textAlign:"center",color:"#ffb347",fontWeight:"700",minWidth:"70px"}}>Qty</th>
+                        <th style={{padding:"8px 6px",textAlign:"center",color:"#ffb347",fontWeight:"700",minWidth:"50px"}}>Unit</th>
+                        <th style={{padding:"8px 6px",textAlign:"center",color:"#ffb347",fontWeight:"700",minWidth:"80px"}}>Rate ₹</th>
+                        <th style={{padding:"8px 6px",textAlign:"right",color:"#ffb347",fontWeight:"700",minWidth:"80px"}}>Amount</th>
+                        <th style={{padding:"4px",minWidth:"30px"}}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(sf.items||[]).map((it,i)=><tr key={i} style={{borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                        <td style={{padding:"6px"}}><input style={{marginBottom:0,fontSize:"12px",padding:"6px 8px"}} value={it.name} onChange={e=>setSf(f=>({...f,items:f.items.map((x,idx)=>idx===i?{...x,name:e.target.value}:x)}))} placeholder="Item नाम"/>{items.length>0&&<select style={{marginTop:"2px",marginBottom:0,fontSize:"11px",padding:"4px 6px"}} onChange={e=>{if(e.target.value){const it2=items.find(x=>x.name===e.target.value);setSf(f=>({...f,items:f.items.map((x,idx)=>idx===i?{...x,name:e.target.value,unit:it2?.unit||x.unit,rate:it2?.default_rate||x.rate}:x)}))}}}><option value="">Saved Items</option>{items.map(it2=><option key={it2.id} value={it2.name}>{it2.name}</option>)}</select>}</td>
+                        <td style={{padding:"6px"}}><input style={{marginBottom:0,fontSize:"12px",padding:"6px 4px",textAlign:"center"}} type="number" value={it.qty} onChange={e=>setSf(f=>({...f,items:f.items.map((x,idx)=>idx===i?{...x,qty:e.target.value}:x)}))}/></td>
+                        <td style={{padding:"6px"}}><select style={{marginBottom:0,fontSize:"12px",padding:"6px 4px"}} value={it.unit||"pcs"} onChange={e=>setSf(f=>({...f,items:f.items.map((x,idx)=>idx===i?{...x,unit:e.target.value}:x)}))}><option>pcs</option><option>kg</option><option>g</option><option>dozen</option><option>box</option></select></td>
+                        <td style={{padding:"6px"}}><input style={{marginBottom:0,fontSize:"12px",padding:"6px 4px",textAlign:"center"}} type="number" value={it.rate} onChange={e=>setSf(f=>({...f,items:f.items.map((x,idx)=>idx===i?{...x,rate:e.target.value}:x)}))}/></td>
+                        <td style={{padding:"6px",textAlign:"right",color:"#00c864",fontWeight:"700"}}>{it.qty&&it.rate?rupee(parseFloat(it.qty)*parseFloat(it.rate)):"-"}</td>
+                        <td style={{padding:"4px",textAlign:"center"}}><button onClick={()=>setSf(f=>({...f,items:f.items.filter((_,idx)=>idx!==i)}))} style={{background:"rgba(255,60,60,0.2)",border:"none",color:"#ff4040",borderRadius:"6px",padding:"4px 8px",cursor:"pointer",fontSize:"14px"}}>×</button></td>
+                      </tr>)}
+                      {/* Add Row */}
+                      <tr>
+                        <td colSpan="6" style={{padding:"6px"}}>
+                          <button style={{...S.bsm("rgba(0,200,100,0.15)"),color:"#00c864",border:"1px dashed rgba(0,200,100,0.4)",width:"100%",padding:"8px"}} onClick={()=>setSf(f=>({...f,items:[...(f.items||[]),{name:"",qty:"",rate:"",unit:"pcs"}]}))}>+ ADD ROW</button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Shipping */}
+                <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"8px"}}>
+                  <label style={{...S.lbl,marginBottom:0,whiteSpace:"nowrap"}}>🚚 Shipping ₹</label>
+                  <input style={{marginBottom:0,flex:1}} type="number" placeholder="0" value={sf.shipping} onChange={e=>setSf(f=>({...f,shipping:e.target.value}))}/>
+                </div>
+
+                {/* Total Summary */}
+                {(sf.items||[]).filter(it=>it.qty&&it.rate).length>0&&<div style={{background:"rgba(0,200,100,0.08)",borderRadius:"10px",padding:"12px",marginBottom:"10px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px",fontSize:"12px",color:"#ccc"}}><span>Items Total</span><span>{rupee((sf.items||[]).reduce((s,it)=>s+(parseFloat(it.qty||0)*parseFloat(it.rate||0)),0))}</span></div>
+                  {parseFloat(sf.shipping||0)>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px",fontSize:"12px",color:"#ccc"}}><span>🚚 Shipping</span><span>{rupee(sf.shipping)}</span></div>}
+                  <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid rgba(255,255,255,0.1)",paddingTop:"8px",marginTop:"4px"}}><b style={{fontSize:"15px"}}>Total</b><b style={{color:"#00c864",fontSize:"20px"}}>{rupee((sf.items||[]).reduce((s,it)=>s+(parseFloat(it.qty||0)*parseFloat(it.rate||0)),0)+parseFloat(sf.shipping||0))}</b></div>
+                </div>}
+
+                <button style={S.btn("linear-gradient(135deg,#27ae60,#1e8449)")} onClick={addSale} disabled={busy}>{busy?"⏳ Saving...":"✅ Sale Save करें"}</button>
+              </div>
+
+              {/* Sales List */}
+              <div style={{...S.card,background:"rgba(0,200,100,0.06)"}}><div style={{display:"flex",justifyContent:"space-between"}}><span>Total Sales</span><b style={{color:"#00c864",fontSize:"18px"}}>{rupee(totS)}</b></div></div>
+              {sales.map(s=><div key={s.id} style={S.card}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:"700",fontSize:"14px"}}>{s.customer||"Walk-in"}</div>
+                    <div style={{display:"flex",gap:"4px",margin:"4px 0"}}>
+                      <span style={S.bdg(s.payment_type==="cash"?"g":"y")}>{s.payment_type==="cash"?"💵 Cash":"🤝 Credit"}</span>
+                      <span style={{fontSize:"11px",color:"#888"}}>{s.date}</span>
+                    </div>
+                    {/* Item details */}
+                    {s.items&&s.items.length>0&&s.items[0].name?
+                      <div style={{background:"rgba(0,200,100,0.06)",borderRadius:"8px",padding:"8px",marginTop:"6px"}}>
+                        <table style={{width:"100%",fontSize:"12px",borderCollapse:"collapse"}}>
+                          <thead><tr style={{color:"#888"}}>
+                            <td style={{padding:"2px 4px"}}>Item</td>
+                            <td style={{padding:"2px 4px",textAlign:"center"}}>Qty</td>
+                            <td style={{padding:"2px 4px",textAlign:"center"}}>Rate</td>
+                            <td style={{padding:"2px 4px",textAlign:"right"}}>Amt</td>
+                          </tr></thead>
+                          <tbody>{s.items.map((it,i)=>it.name?<tr key={i} style={{borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+                            <td style={{padding:"3px 4px",color:"#fff"}}>{it.name}</td>
+                            <td style={{padding:"3px 4px",textAlign:"center",color:"#ccc"}}>{it.qty} {it.unit||""}</td>
+                            <td style={{padding:"3px 4px",textAlign:"center",color:"#ccc"}}>₹{it.rate}</td>
+                            <td style={{padding:"3px 4px",textAlign:"right",color:"#00c864",fontWeight:"700"}}>₹{(parseFloat(it.qty||0)*parseFloat(it.rate||0)).toFixed(0)}</td>
+                          </tr>:null)}</tbody>
+                        </table>
+                        {parseFloat(s.shipping||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:"11px",color:"#888",marginTop:"4px"}}><span>🚚 Shipping</span><span>₹{s.shipping}</span></div>}
+                      </div>
+                    :<div style={{fontSize:"12px",color:"#888"}}>{s.item}</div>}
+                  </div>
+                  <b style={{color:"#00c864",fontSize:"16px",marginLeft:"8px"}}>{rupee(s.total)}</b>
+                </div>
+              </div>)}
+            </div>}
+
+            {accTab==="pur"&&<div>
+              <div style={S.card}>
+                <div style={{fontWeight:"800",color:"#ff8c00",marginBottom:"10px"}}>➕ Purchase दर्ज करें</div>
+                <CashCreditToggle value={pf2.payment_type} onChange={v=>setPf2(f=>({...f,payment_type:v}))}/>
+
+                {/* Vendor */}
+                <label style={S.lbl}>🏪 Vendor *</label>
+                <div style={{display:"flex",gap:"6px",marginBottom:"4px"}}>
+                  <select style={{flex:1,marginBottom:0}} onChange={e=>{
+                    const p=parties.find(x=>x.id===parseInt(e.target.value));
+                    if(p){setPf2(f=>({...f,vendor:p.name}));setPf2sel({vendor_id:String(p.id),vendor_name:p.name});}
+                    else{setPf2(f=>({...f,vendor:""}));setPf2sel({vendor_id:"",vendor_name:""});}
+                  }}>
+                    <option value="">-- Party चुनें --</option>
+                    {parties.filter(p=>p.type==="vendor").map(p=><option key={p.id} value={p.id}>{p.name}{parseFloat(p.balance||0)>0?` (बकाया: ₹${parseFloat(p.balance).toLocaleString()})`:""}</option>)}
+                  </select>
+                  <button style={{...S.bsm("linear-gradient(135deg,#2980b9,#1a5276)"),whiteSpace:"nowrap"}} onClick={()=>setSubScreen("newParty")}>+ New</button>
+                </div>
+                <input placeholder="या नाम लिखें" value={pf2.vendor} onChange={e=>{setPf2(f=>({...f,vendor:e.target.value}));setPf2sel({vendor_id:"",vendor_name:""});}} style={{marginBottom:"6px"}}/>
+                {pf2sel.vendor_id&&<div style={{background:"rgba(255,60,60,0.1)",border:"1px solid rgba(255,60,60,0.3)",borderRadius:"8px",padding:"8px",marginBottom:"8px",fontSize:"13px",display:"flex",justifyContent:"space-between"}}>
+                  <span style={{color:"#ffb347"}}>🏪 {pf2.vendor}</span>
+                  <span style={{color:"#ff4040",fontWeight:"700"}}>बकाया: {rupee(parties.find(p=>p.id===parseInt(pf2sel.vendor_id))?.balance||0)}</span>
+                </div>}
+
+                {/* Items Table - Vyapar Style */}
+                <div style={{overflowX:"auto",marginBottom:"8px"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:"13px"}}>
+                    <thead>
+                      <tr style={{background:"rgba(255,140,0,0.2)"}}>
+                        <th style={{padding:"8px 6px",textAlign:"left",color:"#ffb347",fontWeight:"700",minWidth:"120px"}}>#  Item</th>
+                        <th style={{padding:"8px 6px",textAlign:"center",color:"#ffb347",fontWeight:"700",minWidth:"70px"}}>Qty</th>
+                        <th style={{padding:"8px 6px",textAlign:"center",color:"#ffb347",fontWeight:"700",minWidth:"50px"}}>Unit</th>
+                        <th style={{padding:"8px 6px",textAlign:"center",color:"#ffb347",fontWeight:"700",minWidth:"80px"}}>Rate ₹</th>
+                        <th style={{padding:"8px 6px",textAlign:"right",color:"#ffb347",fontWeight:"700",minWidth:"80px"}}>Amount</th>
+                        <th style={{padding:"4px",minWidth:"30px"}}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(pf2.items||[]).map((it,i)=><tr key={i} style={{borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                        <td style={{padding:"6px"}}><input style={{marginBottom:0,fontSize:"12px",padding:"6px 8px"}} value={it.name} onChange={e=>setPf2(f=>({...f,items:f.items.map((x,idx)=>idx===i?{...x,name:e.target.value}:x)}))} placeholder="Item नाम"/></td>
+                        <td style={{padding:"6px"}}><input style={{marginBottom:0,fontSize:"12px",padding:"6px 4px",textAlign:"center"}} type="number" value={it.qty} onChange={e=>setPf2(f=>({...f,items:f.items.map((x,idx)=>idx===i?{...x,qty:e.target.value}:x)}))}/></td>
+                        <td style={{padding:"6px"}}><select style={{marginBottom:0,fontSize:"12px",padding:"6px 4px"}} value={it.unit||"kg"} onChange={e=>setPf2(f=>({...f,items:f.items.map((x,idx)=>idx===i?{...x,unit:e.target.value}:x)}))}><option>kg</option><option>g</option><option>L</option><option>pcs</option><option>bag</option></select></td>
+                        <td style={{padding:"6px"}}><input style={{marginBottom:0,fontSize:"12px",padding:"6px 4px",textAlign:"center"}} type="number" value={it.rate} onChange={e=>setPf2(f=>({...f,items:f.items.map((x,idx)=>idx===i?{...x,rate:e.target.value}:x)}))}/></td>
+                        <td style={{padding:"6px",textAlign:"right",color:"#ff8c00",fontWeight:"700"}}>{it.qty&&it.rate?rupee(parseFloat(it.qty)*parseFloat(it.rate)):"-"}</td>
+                        <td style={{padding:"4px",textAlign:"center"}}><button onClick={()=>setPf2(f=>({...f,items:f.items.filter((_,idx)=>idx!==i)}))} style={{background:"rgba(255,60,60,0.2)",border:"none",color:"#ff4040",borderRadius:"6px",padding:"4px 8px",cursor:"pointer",fontSize:"14px"}}>×</button></td>
+                      </tr>)}
+                      <tr>
+                        <td colSpan="6" style={{padding:"6px"}}>
+                          <button style={{...S.bsm("rgba(255,140,0,0.15)"),color:"#ff8c00",border:"1px dashed rgba(255,140,0,0.4)",width:"100%",padding:"8px"}} onClick={()=>setPf2(f=>({...f,items:[...(f.items||[]),{name:"",qty:"",rate:"",unit:"kg"}]}))}>+ ADD ROW</button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Shipping */}
+                <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"8px"}}>
+                  <label style={{...S.lbl,marginBottom:0,whiteSpace:"nowrap"}}>🚚 Shipping ₹</label>
+                  <input style={{marginBottom:0,flex:1}} type="number" placeholder="0" value={pf2.shipping} onChange={e=>setPf2(f=>({...f,shipping:e.target.value}))}/>
+                </div>
+
+                {/* Total */}
+                {(pf2.items||[]).filter(it=>it.qty&&it.rate).length>0&&<div style={{background:"rgba(255,140,0,0.08)",borderRadius:"10px",padding:"12px",marginBottom:"10px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px",fontSize:"12px",color:"#ccc"}}><span>Items Total</span><span>{rupee((pf2.items||[]).reduce((s,it)=>s+(parseFloat(it.qty||0)*parseFloat(it.rate||0)),0))}</span></div>
+                  {parseFloat(pf2.shipping||0)>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:"4px",fontSize:"12px",color:"#ccc"}}><span>🚚 Shipping</span><span>{rupee(pf2.shipping)}</span></div>}
+                  <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid rgba(255,255,255,0.1)",paddingTop:"8px",marginTop:"4px"}}><b style={{fontSize:"15px"}}>Total</b><b style={{color:"#ff8c00",fontSize:"20px"}}>{rupee((pf2.items||[]).reduce((s,it)=>s+(parseFloat(it.qty||0)*parseFloat(it.rate||0)),0)+parseFloat(pf2.shipping||0))}</b></div>
+                </div>}
+
+                <button style={S.btn()} onClick={addPurch} disabled={busy}>{busy?"⏳ Saving...":"✅ Purchase Save करें"}</button>
+              </div>
+
+              {/* Purchase List */}
+              <div style={S.card}><div style={{display:"flex",justifyContent:"space-between"}}><span>Total Purchase</span><b style={{color:"#ff8c00",fontSize:"18px"}}>{rupee(totP)}</b></div></div>
+              {purch.map(p=><div key={p.id} style={S.card}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:"700",fontSize:"14px"}}>{p.vendor||"Vendor"}</div>
+                    <div style={{display:"flex",gap:"4px",margin:"4px 0"}}>
+                      <span style={S.bdg(p.payment_type==="cash"?"g":"y")}>{p.payment_type==="cash"?"💵 Cash":"🤝 Credit"}</span>
+                      <span style={{fontSize:"11px",color:"#888"}}>{p.date}</span>
+                    </div>
+                    {p.items&&p.items.length>0&&p.items[0].name?
+                      <div style={{background:"rgba(255,140,0,0.06)",borderRadius:"8px",padding:"8px",marginTop:"6px"}}>
+                        <table style={{width:"100%",fontSize:"12px",borderCollapse:"collapse"}}>
+                          <thead><tr style={{color:"#888"}}>
+                            <td style={{padding:"2px 4px"}}>Item</td>
+                            <td style={{padding:"2px 4px",textAlign:"center"}}>Qty</td>
+                            <td style={{padding:"2px 4px",textAlign:"center"}}>Rate</td>
+                            <td style={{padding:"2px 4px",textAlign:"right"}}>Amt</td>
+                          </tr></thead>
+                          <tbody>{p.items.map((it,i)=>it.name?<tr key={i} style={{borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+                            <td style={{padding:"3px 4px",color:"#fff"}}>{it.name}</td>
+                            <td style={{padding:"3px 4px",textAlign:"center",color:"#ccc"}}>{it.qty} {it.unit||""}</td>
+                            <td style={{padding:"3px 4px",textAlign:"center",color:"#ccc"}}>₹{it.rate}</td>
+                            <td style={{padding:"3px 4px",textAlign:"right",color:"#ff8c00",fontWeight:"700"}}>₹{(parseFloat(it.qty||0)*parseFloat(it.rate||0)).toFixed(0)}</td>
+                          </tr>:null)}</tbody>
+                        </table>
+                        {parseFloat(p.shipping||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:"11px",color:"#888",marginTop:"4px"}}><span>🚚 Shipping</span><span>₹{p.shipping}</span></div>}
+                      </div>
+                    :<div style={{fontSize:"12px",color:"#888"}}>{p.item}</div>}
+                  </div>
+                  <b style={{color:"#ff8c00",fontSize:"16px",marginLeft:"8px"}}>{rupee(p.total)}</b>
+                </div>
+              </div>)}
+            </div>}
+
+            {accTab==="exp"&&<div>
+              <div style={S.card}>
+                <div style={{fontWeight:"800",color:"#ff4040",marginBottom:"12px"}}>➕ Expense</div>
+                <select value={ef.category} onChange={e=>setEf(f=>({...f,category:e.target.value}))}>
+                  {["Rent","Salary","Electricity","Transport","Maintenance","Marketing","Other"].map(c=><option key={c}>{c}</option>)}
+                </select>
+                <input placeholder="Description *" value={ef.desc} onChange={e=>setEf(f=>({...f,desc:e.target.value}))}/>
+                <input type="number" placeholder="Amount ₹ *" value={ef.amount} onChange={e=>setEf(f=>({...f,amount:e.target.value}))}/>
+                <button style={S.btn("linear-gradient(135deg,#c0392b,#922b21)")} onClick={addExp} disabled={busy}>{busy?"⏳...":"✅ Save"}</button>
+              </div>
+              <div style={S.card}><div style={{display:"flex",justifyContent:"space-between"}}><span>Total Expense</span><b style={{color:"#ff4040",fontSize:"18px"}}>{rupee(totE)}</b></div></div>
+              {exps.map(e=><div key={e.id} style={S.card}><div style={{display:"flex",justifyContent:"space-between"}}><div><span style={S.bdg("r")}>{e.category}</span><b style={{marginLeft:"6px"}}>{e.desc_text}</b></div><b style={{color:"#ff4040"}}>{rupee(e.amount)}</b></div></div>)}
+            </div>}
+          </div>}
+
+          {tab==="reports"&&<div>
+            <div style={{fontWeight:"800",color:"#ff8c00",fontSize:"16px",marginBottom:"12px"}}>📋 Reports</div>
+            <div style={{...S.card,background:"rgba(0,200,100,0.07)",border:"1px solid rgba(0,200,100,0.25)"}}>
+              <div style={{color:"#00c864",fontWeight:"700",marginBottom:"8px"}}>📊 Cash Flow</div>
+              {[["Invoice Sales",totInv,"g"],["Direct Sales",totS,"g"],["Purchase",-totP,"r"],["Expenses",-totE,"r"]].map(([l,v,c])=><div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}><span style={{color:"#ccc"}}>{l}</span><span style={{color:c==="g"?"#00c864":"#ff4040",fontWeight:"700"}}>{c==="g"?"+":"-"}{rupee(Math.abs(v))}</span></div>)}
+              <div style={{display:"flex",justifyContent:"space-between",paddingTop:"8px",borderTop:"1px solid rgba(255,255,255,0.1)",marginTop:"4px"}}><b>Net Profit</b><b style={{fontSize:"20px",color:net>=0?"#00c864":"#ff4040"}}>{net>=0?"+":""}{rupee(net)}</b></div>
+            </div>
+            <div style={S.card}>
+              <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"10px"}}>👥 Party Ledger (बकाया)</div>
+              {parties.filter(p=>parseFloat(p.balance||0)>0).length===0?<div style={{color:"#666",fontSize:"13px"}}>कोई बकाया नहीं ✅</div>
+                :parties.filter(p=>parseFloat(p.balance||0)>0).map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                  <div>
+                    <div style={{fontWeight:"600"}}>{p.name}</div>
+                    <span style={S.bdg(p.type==="customer"?"b":"o")}>{p.type}</span>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{color:"#ff4040",fontWeight:"700"}}>{rupee(p.balance)}</div>
+                    <button style={{...S.bsm("linear-gradient(135deg,#2980b9,#1a5276)"),fontSize:"10px",padding:"2px 6px",marginTop:"2px"}} onClick={()=>{setStmtParty(p);setSubScreen("statement");}}>📋</button>
+                  </div>
+                </div>)}
+            </div>
+            <div style={S.card}>
+              <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"10px"}}>📋 GST Report</div>
+              {invoices.filter(i=>parseFloat(i.tax_amount||0)>0).length===0?<div style={{color:"#666",fontSize:"13px"}}>कोई GST invoice नहीं</div>
+                :invoices.filter(i=>parseFloat(i.tax_amount||0)>0).map(inv=><div key={inv.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                  <div><div style={{fontSize:"13px"}}>{inv.party_name}</div><div style={{fontSize:"11px",color:"#888"}}>{inv.invoice_no} • {inv.tax_rate}%</div></div>
+                  <span style={{color:"#ffb347"}}>{rupee(inv.tax_amount)}</span>
+                </div>)}
+              <div style={{borderTop:"1px solid rgba(255,255,255,0.1)",paddingTop:"8px",marginTop:"8px",display:"flex",justifyContent:"space-between"}}><b>Total GST</b><b style={{color:"#ffb347"}}>{rupee(invoices.reduce((s,i)=>s+parseFloat(i.tax_amount||0),0))}</b></div>
+            </div>
+            <div style={S.card}>
+              <div style={{fontWeight:"700",color:"#ffb347",marginBottom:"10px"}}>💸 Expense Breakdown</div>
+              {["Rent","Salary","Electricity","Transport","Maintenance","Marketing","Other"].map(cat=>{
+                const t=exps.filter(e=>e.category===cat).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+                if(!t)return null;
+                return <div key={cat} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}><span style={{color:"#ccc"}}>{cat}</span><span style={{color:"#ff4040",fontWeight:"600"}}>{rupee(t)}</span></div>;
+              })}
+            </div>
+          </div>}
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
